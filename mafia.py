@@ -1,6 +1,7 @@
 import tornado.ioloop
 import tornado.web
 from tornado.options import parse_command_line
+import socket
 import requests
 import json
 import sys
@@ -12,10 +13,10 @@ headers = {"Content-Type":"application/json", "Upgrade": "websocket",
     "Connection": "Upgrade"}
 
 # This should later be moved to the Config Files
-serverIP = "http://18.189.63.57"
+serverIP = "http://{}".format(socket.gethostname())
 #player = [int(x) for x in raw_input("IP List: ").split(',')]
-player = [8870, 8871, 8872, 8873, 8874, 8875, 8876, 8877, 8878, 8879, 8880]
-# Another possible form of the player list: 
+player = [i for i in range(8870, 8880+1)]
+# Another possible form of the player list:
 #['https://localhost:8870/', 'https://localhost:8871/', 'https://localhost:8872/', 'https://localhost:8873/', 'https://localhost:8874/', 'https://localhost:8875/', 'https://localhost:8876/', 'https://localhost:8877/', 'https://localhost:8878/', 'https://localhost:8879/', 'https://localhost:8880/']
 
 # Settings for each player
@@ -95,17 +96,17 @@ class SetupHandler(tornado.web.RequestHandler):
         for c in enc_cards:
             pt = cipher.decrypt(c)
             dec_cards.append(pt)
-        return dec_cards    
+        return dec_cards
 
     def encrypt(cards, key):
-        # TODO 
+        # TODO
         print("encrypt")
         enc_cards = []
         # iv = Random.new().read(AES.block_size)
         ctr = Counter.new(128)
-        cipher = AES.new(key, AES.MODE_CTR, counter=ctr) 
+        cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
         for c in cards:
-            
+
             # TODO: is card a string? (how may byte literal)
             ct = cipher.encrypt(b'PLAINTEXT GOES HERE')
             enc_cards.append(ct)
@@ -154,7 +155,7 @@ class DayHandler(tornado.web.RequestHandler):
         self.write(player_to_lynch)
 
         #data = {"data":[]}
-        
+
 class MessageHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("No messages received!")
@@ -201,4 +202,4 @@ if __name__ == "__main__":
     # start the mafia server
     port = player[playerNum]
     app.listen(port)
-    tornado.ioloop.IOLoop.current().start() 
+    tornado.ioloop.IOLoop.current().start()
