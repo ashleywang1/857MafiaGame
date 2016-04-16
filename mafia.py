@@ -4,6 +4,9 @@ from tornado.options import parse_command_line
 import requests
 import json
 import sys
+from Crypto.Cipher import AES
+from Crypto import Random
+from Crypto.Util import Counter
 
 headers = {"Content-Type":"application/json", "Upgrade": "websocket",
     "Connection": "Upgrade"}
@@ -26,65 +29,85 @@ mafia_secret_key = None #secret key for mafia_channel
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("Welcome to the Mafia Game Lobby!")
-        print "Player " + str(playerNum) + " has joined the game!"
+        print("Player " + str(playerNum) + " has joined the game!")
         data = {"stage":"start"}
         for i in range(len(player)):
-        	if i == playerNum:
-        		continue
-			hostname = serverIP + ":" + str(player[i])
-			try:
-				r = requests.get(hostname + "/heartbeat", timeout=.1)
-			except:
-			 	self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
-		#r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
-		#r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
+            if i == playerNum:
+                continue
+            hostname = serverIP + ":" + str(player[i])
+            try:
+                r = requests.get(hostname + "/heartbeat", timeout=.1)
+            except:
+                self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
+        #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
+        #r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
 
 class SetupHandler(tornado.web.RequestHandler):
-	# Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
-	# Player B: Encrypts A's encrypted cardList with secret y ......Sends Enc(cardList, y) to C
-	# Player C -> N -> A: chooses one, removes it, sends to next player
-	# Player A: reveal A's secret key
-	# Player B: reveal B's secret key
+    # Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
+    # Player B: Encrypts A's encrypted cardList with secret y ......Sends Enc(cardList, y) to C
+    # Player C -> N -> A: chooses one, removes it, sends to next player
+    # Player A: reveal A's secret key
+    # Player B: reveal B's secret key
 
-	def encrypt(cards, key):
-		# TODO
-		print "encrypt"
-		return cards
+    def decrypt(enc_cards, key, ctr):
+        # TODO: need to retrieve the ctr here?
+        cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
+        dec_cards = []
+        for c in enc_cards:
+            pt = cipher.decrypt(c)
+            dec_cards.append(pt)
+        return dec_cards    
 
-	def choose(cards):
-		card = cards[0]
+    def encrypt(cards, key):
+        # TODO 
+        print("encrypt")
+        enc_cards = []
+        # iv = Random.new().read(AES.block_size)
+        ctr = Counter.new(128)
+        cipher = AES.new(key, AES.MODE_CTR, counter=ctr) 
+        for c in cards:
+            
+            # TODO: is card a string? (how may byte literal)
+            ct = cipher.encrypt(b'PLAINTEXT GOES HERE')
+            enc_cards.append(ct)
 
-	def get(self):
-		self.write("Setting up!" + str(playerNum))
+        return enc_cards
+
+    def choose(cards):
+        # TODO: randomly choose the card
+        card = cards[0]
+
+    def get(self):
+        self.write("Setting up!" + str(playerNum))
         # self.get_argument('cards')
         if playerNum in [0,1]:
-        	x = 0 # secret key
-        	cards = [("DOCTOR",None), ("DETECTIVE",None), ("MAFIA",x), ("MAFIA",x), ("TOWNSPERSON",None), ("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None)]
-        	shuffledCards = encrypt(cards, x)
-        	data = data = {"cards":shuffledCards, "stage":"shuffling"}
-        	print "when" + str(playerNum) + assignment
-        	requests.post(serverIP + str(player[3]) + "/setup/",headers=headers,data=json.dumps(data))
+            x = 0 # TODO: secret key
+            cards = [("DOCTOR",None), ("DETECTIVE",None), ("MAFIA",x), ("MAFIA",x), ("TOWNSPERSON",None), ("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None)]
+            shuffledCards = encrypt(cards, x)
+            data = data = {"cards":shuffledCards, "stage":"shuffling"}
+            print("when" + str(playerNum) + assignment)
+            requests.post(serverIP + str(player[3]) + "/setup/",headers=headers,data=json.dumps(data))
         #global assignment = "DOCTOR"
         if playerNum == 2:
-        	print "Player 3 got a message: " + self.get_argument('cards')
+            print("Player 3 got a message: " + self.get_argument('cards'))
 
 class NightHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("It's night!")
-        print "night"
+        print("night")
         #data = {"data":[]}
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
 class DayHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("It's day!")
-        print "day"
+        print("day")
         #data = {"data":[]}
         
 class MessageHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("No messages received!")
-        print "msg"
+        print("msg")
         #data = {"data":[]}
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
@@ -105,16 +128,16 @@ def make_app():
     ])
 
 if __name__ == "__main__":
-	# Run server with python mafia.py 'list of player ips' 'playerNum'
-		# ex: python mafia.py '8871, 8872, 8873, 8874, 8875, 8876, 8877, 8878, 8879, 8880' 0
+    # Run server with python mafia.py 'list of player ips' 'playerNum'
+        # ex: python mafia.py '8871, 8872, 8873, 8874, 8875, 8876, 8877, 8878, 8879, 8880' 0
     app = make_app()
     argv = parse_command_line(sys.argv)
     if len(argv) != 2:
-    	raise ValueError("Please run server with arguments 'list of player ips' 'playerNum'")
+        raise ValueError("Please run server with arguments 'list of player ips' 'playerNum'")
     # set global variables
     player = [int(x) for x in argv[0].split(',')]
     playerNum = int(argv[1])
     # start the mafia server
     port = player[playerNum]
     app.listen(port)
-    tornado.ioloop.IOLoop.current().start()	
+    tornado.ioloop.IOLoop.current().start() 
