@@ -9,7 +9,7 @@ headers = {"Content-Type":"application/json", "Upgrade": "websocket",
     "Connection": "Upgrade"}
 
 # This should later be moved to the Config Files
-serverIP = "http://localhost:"
+serverIP = "http://18.189.63.57"
 #player = [int(x) for x in raw_input("IP List: ").split(',')]
 player = [8870, 8871, 8872, 8873, 8874, 8875, 8876, 8877, 8878, 8879, 8880]
 # Another possible form of the player list: 
@@ -25,22 +25,19 @@ mafia_secret_key = None #secret key for mafia_channel
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
-        self.write("Hello, world")
+        self.write("Welcome to the Mafia Game Lobby!")
         print "Player " + str(playerNum) + " has joined the game!"
         data = {"stage":"start"}
-
         for i in range(len(player)):
-			hostname = "https://localhost:" + str(player[i])
+        	if i == playerNum:
+        		continue
+			hostname = serverIP + ":" + str(player[i])
 			try:
-				r = requests.get(hostname + "/heartbeat/", timeout=.1)
-				print r.text
+				r = requests.get(hostname + "/heartbeat", timeout=.1)
 			except:
-				self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
-			#if r != "alive":
-			#	break
-			#else:
-			#	r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
-			#	r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
+			 	self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
+		#r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
+		#r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
 
 class SetupHandler(tornado.web.RequestHandler):
 	# Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
@@ -93,7 +90,7 @@ class MessageHandler(tornado.web.RequestHandler):
 
 class HeartbeatHandler(tornado.web.RequestHandler):
     def get(self):
-        self.write("Heartbeat")
+        self.write("I'm alive!")
         #data = {"data":[]}
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
