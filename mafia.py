@@ -10,13 +10,14 @@ headers = {"Content-Type":"application/json", "Upgrade": "websocket",
 
 # This should later be moved to the Config Files
 serverIP = "http://localhost:"
+#player = [int(x) for x in raw_input("IP List: ").split(',')]
 player = [8870, 8871, 8872, 8873, 8874, 8875, 8876, 8877, 8878, 8879, 8880]
 # Another possible form of the player list: 
 #['https://localhost:8870/', 'https://localhost:8871/', 'https://localhost:8872/', 'https://localhost:8873/', 'https://localhost:8874/', 'https://localhost:8875/', 'https://localhost:8876/', 'https://localhost:8877/', 'https://localhost:8878/', 'https://localhost:8879/', 'https://localhost:8880/']
 
 # Settings for each player
-playerNum = 0
-assignment = None # Mafia, Townsperson, Doctor, Detective
+playerNum = -1
+assignment = "" # Mafia, Townsperson, Doctor, Detective
 
 # Mafia settings
 MAFIA = False
@@ -25,6 +26,7 @@ mafia_secret_key = None #secret key for mafia_channel
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("Hello, world")
+        print 'this starts up'
         #data = {"data":[]}
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
@@ -38,6 +40,7 @@ class SetupHandler(tornado.web.RequestHandler):
 
 	def encrypt(cards, key):
 		# TODO
+		print "encrypt"
 		return cards
 	def choose(cards):
 		card = cards[0]
@@ -49,18 +52,46 @@ class SetupHandler(tornado.web.RequestHandler):
         	cards = [("DOCTOR",None), ("DETECTIVE",None), ("MAFIA",x), ("MAFIA",x), ("TOWNSPERSON",None), ("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None)]
         	shuffledCards = encrypt(cards, x)
         	data = data = {"cards":shuffledCards, "stage":"shuffling"}
-        	print "when"
+        	print "when" + str(playerNum) + assignment
         	# requests.post(serverIP + str(player[3]) + "/setup/",headers=headers,data=json.dumps(data))
         #global assignment = "DOCTOR"
         if playerNum == 2:
         	print "Player 3 got a message: " + self.get_argument('cards')
 
+class NightHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write("It's night!")
+        print "night"
+        #data = {"data":[]}
+        #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
+class DayHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write("It's day!")
+        print "day"
+        #data = {"data":[]}
+        
+class MessageHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write("No messages received!")
+        print "msg"
+        #data = {"data":[]}
+        #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
+
+class HeartbeatHandler(tornado.web.RequestHandler):
+    def get(self):
+        self.write("Heartbeat")
+        #data = {"data":[]}
+        #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
 def make_app():
     return tornado.web.Application([
         (r"/", MainHandler),
-        (r"/setup", SetupHandler)
+        (r"/setup", SetupHandler),
+        (r"/night", NightHandler),
+        (r"/day", DayHandler),
+        (r"/message", MessageHandler),
+        (r"/heartbeat", HeartbeatHandler)
     ])
 
 if __name__ == "__main__":
