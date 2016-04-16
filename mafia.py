@@ -23,19 +23,30 @@ assignment = "" # Mafia, Townsperson, Doctor, Detective
 MAFIA = False
 mafia_secret_key = None #secret key for mafia_channel
 
+# Hearbeat settings
+state = "SETUP" #"DAY", "NIGHT"
+roundNum = 0
+lynched = []
+killed = []
+
+def heartbeat():
+    for i in range(len(player)):
+    	if i == playerNum:
+    		continue
+		hostname = serverIP + ":" + str(player[i]) + "/heartbeat"
+		try:
+			r = requests.get(hostname, timeout=.1)
+		except:
+		 	self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
+
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("Welcome to the Mafia Game Lobby!")
         print "Player " + str(playerNum) + " has joined the game!"
         data = {"stage":"start"}
-        for i in range(len(player)):
-        	if i == playerNum:
-        		continue
-			hostname = serverIP + ":" + str(player[i])
-			try:
-				r = requests.get(hostname + "/heartbeat", timeout=.1)
-			except:
-			 	self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
+
+        # Hearbeat
+        heartbeat()
 		#r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 		#r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
 
@@ -89,11 +100,15 @@ class MessageHandler(tornado.web.RequestHandler):
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
 class HeartbeatHandler(tornado.web.RequestHandler):
+	# synchronize state = {Day, Night, Setup}
+	# synchronize roundNum = 0 to numPlayers at most
+	# synchronize deadPlayers = {lynched[], killed[]}
+	# synchronize mafiaAllDead = False, True
+	# synchronize townspeopleAllDead = False,True
     def get(self):
-        self.write("I'm alive!")
-        #data = {"data":[]}
-        #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
-
+    	heartbeat = {'state':state, 'round':roundNum, 'deadPlayers':lynched + killed,'mafiaAllDead':False,'townspeopleAllDead':False}
+        self.write(json.dumps(heartbeat))
+        
 def make_app():
     return tornado.web.Application([
         (r"/", MainHandler),
