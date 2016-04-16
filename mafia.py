@@ -26,19 +26,57 @@ assignment = "" # Mafia, Townsperson, Doctor, Detective
 MAFIA = False
 mafia_secret_key = None #secret key for mafia_channel
 
+# Hearbeat settings
+state = "SETUP" #"DAY", "NIGHT"
+roundNum = 0
+lynched = []
+killed = []
+
+def heartbeat(self):
+    for i in range(len(player)):
+        if i == playerNum:
+            continue
+        hostname = serverIP + ":" + str(player[i]) + "/heartbeat"
+        try:
+            r = requests.get(hostname, timeout=.1)
+            print(json.loads(r))
+        except:
+            self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
+
+def day_round(self):
+    for i in range(len(player)):
+        if i == playerNum:
+            continue
+        hostname = serverIP + ":" + str(player[i]) + "/day"
+        try:
+            r = requests.get(hostname, timeout=.1)
+            print(json.loads(r))
+        except:
+            self.write('\nPlayer {} has no response!\n'.format(i))
+
+
+def night_round(self):
+    for i in range(len(player)):
+        if i == playerNum:
+            continue
+        hostname = serverIP + ":" + str(player[i]) + "/night"
+        try:
+            r = requests.get(hostname, timeout=.1)
+            print(json.loads(r))
+        except:
+            pass
+
+
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("Welcome to the Mafia Game Lobby!")
         print("Player " + str(playerNum) + " has joined the game!")
         data = {"stage":"start"}
-        for i in range(len(player)):
-            if i == playerNum:
-                continue
-            hostname = serverIP + ":" + str(player[i])
-            try:
-                r = requests.get(hostname + "/heartbeat", timeout=.1)
-            except:
-                self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
+
+        # Hearbeat
+        heartbeat(self)
+        day_round(self)
+        night_round(self)
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
         #r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
 
@@ -74,12 +112,11 @@ class SetupHandler(tornado.web.RequestHandler):
         return enc_cards
 
     def choose(cards):
-        # TODO: randomly choose the card
         card = cards[0]
 
     def get(self):
-        self.write("Setting up!" + str(playerNum))
-        # self.get_argument('cards')
+        self.write("Setting up for player " + str(playerNum))
+
         if playerNum in [0,1]:
             x = 0 # TODO: secret key
             cards = [("DOCTOR",None), ("DETECTIVE",None), ("MAFIA",x), ("MAFIA",x), ("TOWNSPERSON",None), ("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None),("TOWNSPERSON",None)]
@@ -99,9 +136,22 @@ class NightHandler(tornado.web.RequestHandler):
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
 class DayHandler(tornado.web.RequestHandler):
+
     def get(self):
         self.write("It's day!")
         print("day")
+
+    def lynch(player):
+        if player == playerNum:
+            # you are dead!
+            stage = "DEAD"
+        lynched.append(player)
+    def get(self):
+        self.write("It's day!")
+        print("day")
+        player_to_lynch = -1
+        self.write(player_to_lynch)
+
         #data = {"data":[]}
         
 class MessageHandler(tornado.web.RequestHandler):
@@ -112,10 +162,20 @@ class MessageHandler(tornado.web.RequestHandler):
         #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
 
 class HeartbeatHandler(tornado.web.RequestHandler):
+    # synchronize state = {Day, Night, Setup}
+    # synchronize roundNum = 0 to numPlayers at most
+    # synchronize deadPlayers = {lynched[], killed[]}
+    # synchronize mafiaAllDead = False, True
+    # synchronize townspeopleAllDead = False,True
     def get(self):
-        self.write("I'm alive!")
-        #data = {"data":[]}
-        #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
+        heartbeat = {
+            'state':state,
+            'round':roundNum,
+            'deadPlayers':lynched + killed,
+            'mafiaAllDead':mafiaAllDead,
+            'townspeopleAllDead':False
+        }
+        self.write(json.dumps(heartbeat))
 
 def make_app():
     return tornado.web.Application([
