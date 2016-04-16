@@ -37,9 +37,10 @@ def heartbeat(self):
         if i == playerNum:
             continue
         hostname = serverIP + ":" + str(player[i]) + "/heartbeat"
+        print(hostname)
         try:
             r = requests.get(hostname, timeout=.1)
-            print(json.loads(r))
+            print(json.loads(r.text))
         except:
             self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
 
@@ -50,7 +51,7 @@ def day_round(self):
         hostname = serverIP + ":" + str(player[i]) + "/day"
         try:
             r = requests.get(hostname, timeout=.1)
-            print(json.loads(r))
+            #print(json.loads(r.text))
         except:
             self.write('\nPlayer {} has no response!\n'.format(i))
 
@@ -149,7 +150,7 @@ class DayHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("It's day!")
         print("day")
-        player_to_lynch = -1
+        player_to_lynch = str(-1)
         self.write(player_to_lynch)
 
         #data = {"data":[]}
@@ -172,7 +173,7 @@ class HeartbeatHandler(tornado.web.RequestHandler):
             'state':state,
             'round':roundNum,
             'deadPlayers':lynched + killed,
-            'mafiaAllDead':mafiaAllDead,
+            'mafiaAllDead':False,
             'townspeopleAllDead':False
         }
         self.write(json.dumps(heartbeat))
