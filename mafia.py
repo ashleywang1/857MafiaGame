@@ -15,7 +15,7 @@ headers = {"Content-Type":"application/json", "Upgrade": "websocket",
 # This should later be moved to the Config Files
 serverIP = "http://{}".format(socket.gethostname())
 #player = [int(x) for x in raw_input("IP List: ").split(',')]
-player = [i for i in range(8870, 8880+1)]
+player = list(range(8870, 8880+1))
 # Another possible form of the player list:
 #['https://localhost:8870/', 'https://localhost:8871/', 'https://localhost:8872/', 'https://localhost:8873/', 'https://localhost:8874/', 'https://localhost:8875/', 'https://localhost:8876/', 'https://localhost:8877/', 'https://localhost:8878/', 'https://localhost:8879/', 'https://localhost:8880/']
 
