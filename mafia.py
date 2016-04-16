@@ -27,23 +27,25 @@ class MainHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("Hello, world")
         print 'this starts up'
-        #data = {"data":[]}
-        #r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
+        data = {"stage":"start"}
+        r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
+        r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
 
 class SetupHandler(tornado.web.RequestHandler):
-	# Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to C
-	# Player B: Encrypts a list of secret y Sends Enc(y) to C
-	# Player C: Adds x and y, Shuffles the lists, chooses one, removes it, sends to next player
-	# Players D - N: choose one from list randomly, removes it, sends to next player
-	# Player A: chooses one, sends to B, reveal A's secret key
-	# Player B: reveal B's secret key to everyone but A
+	# Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
+	# Player B: Encrypts A's encrypted cardList with secret y ......Sends Enc(cardList, y) to C
+	# Player C -> N -> A: chooses one, removes it, sends to next player
+	# Player A: reveal A's secret key
+	# Player B: reveal B's secret key
 
 	def encrypt(cards, key):
 		# TODO
 		print "encrypt"
 		return cards
+
 	def choose(cards):
 		card = cards[0]
+
 	def get(self):
 		self.write("Setting up!" + str(playerNum))
         # self.get_argument('cards')
@@ -53,7 +55,7 @@ class SetupHandler(tornado.web.RequestHandler):
         	shuffledCards = encrypt(cards, x)
         	data = data = {"cards":shuffledCards, "stage":"shuffling"}
         	print "when" + str(playerNum) + assignment
-        	# requests.post(serverIP + str(player[3]) + "/setup/",headers=headers,data=json.dumps(data))
+        	requests.post(serverIP + str(player[3]) + "/setup/",headers=headers,data=json.dumps(data))
         #global assignment = "DOCTOR"
         if playerNum == 2:
         	print "Player 3 got a message: " + self.get_argument('cards')
