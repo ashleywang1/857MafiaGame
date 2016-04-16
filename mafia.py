@@ -26,10 +26,21 @@ mafia_secret_key = None #secret key for mafia_channel
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("Hello, world")
-        print 'this starts up'
+        print "Player " + str(playerNum) + " has joined the game!"
         data = {"stage":"start"}
-        r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
-        r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
+
+        for i in range(len(player)):
+			hostname = "https://localhost:" + str(player[i])
+			try:
+				r = requests.get(hostname + "/heartbeat/", timeout=.1)
+				print r.text
+			except:
+				self.write('\nPlayer {} is not in the lobby yet!\n'.format(i))
+			#if r != "alive":
+			#	break
+			#else:
+			#	r = requests.post("http://localhost:8870/setup/",headers=headers,data=json.dumps(data))
+			#	r = requests.post("http://localhost:8871/setup/",headers=headers,data=json.dumps(data))
 
 class SetupHandler(tornado.web.RequestHandler):
 	# Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
@@ -109,4 +120,4 @@ if __name__ == "__main__":
     # start the mafia server
     port = player[playerNum]
     app.listen(port)
-    tornado.ioloop.IOLoop.current().start()
+    tornado.ioloop.IOLoop.current().start()	
