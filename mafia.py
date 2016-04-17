@@ -102,7 +102,7 @@ class SetupHandler(tornado.web.RequestHandler):
         # TODO
         print("encrypt")
         enc_cards = []
-        # iv = Random.new().read(AES.block_size)
+        iv = Random.new().read(AES.block_size)
         ctr = Counter.new(128)
         cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
         for c in cards:

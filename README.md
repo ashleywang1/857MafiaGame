@@ -6,4 +6,4 @@ Dependencies:
 	- Json, Requests
 	- PyCrypto
 
-	(pip install ujson, pip install requests, pip install tornadoserver, pip install flask)
+	(pip install ujson, pip install requests, pip install tornadoserver, pip install flask, pip install pycrypto)
