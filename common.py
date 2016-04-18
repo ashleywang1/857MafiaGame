@@ -12,7 +12,6 @@ class Stage(Enum):
     DAY = 3
     NIGHT = 4
     DEAD = 5
-    SHUFFLING = 6
 
 @unique
 class Role(Enum):
