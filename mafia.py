@@ -12,6 +12,7 @@ import sys
 # External dependencies
 from Crypto import Random
 from Crypto.Cipher import AES
+from Crypto.Random import random
 from Crypto.Util import Counter
 import requests
 import tornado.ioloop
@@ -23,9 +24,22 @@ from common import *
 from util import EnumEncoder, as_enum
 
 #======================================================================
-# Constants
+# DUMMY TEMPORARY FUNCTIONS
+# TODO: Remove once crypto module is ready
 #======================================================================
-REQUEST_TIMEOUT = 0.1 # Seconds
+def encrypt(text):
+    print("encrypting")
+    return text
+
+def decrypt(text):
+    print("decrypting")
+    return text
+#======================================================================
+
+#======================================================================
+# Global State + Constants
+#======================================================================
+REQUEST_TIMEOUT = 1 # Seconds
 HEADERS = {
     "Content-Type": "application/json",
     "Upgrade": "websocket",
@@ -44,7 +58,7 @@ PLAYERS = list(range(8870, 8880+1))
 ROLE_DISTRIBUTION = {
     Role.DETECTIVE: 1,
     Role.DOCTOR: 1,
-    Role.MAFIA: 2,
+    Role.MAFIA: 3,
     Role.TOWNSPERSON: 6
 }
 
@@ -57,7 +71,7 @@ MAFIA = False
 MAFIA_SECRET_KEY = None #secret key for mafia_channel
 
 # Hearbeat settings
-STATE = Stage.SETUP
+STATE = Stage.INITIALIZATION
 ROUND = 0
 LYNCHED = []
 KILLED = []
@@ -101,6 +115,26 @@ def night_round(self):
         except Exception:
             pass
 
+def setup(self):
+    x = 0 # TODO: secret key
+    cards = [{"card": (Role.MAFIA, x), "taken": False}] * ROLE_DISTRIBUTION[Role.MAFIA]
+    cards.extend([{"card": (Role.TOWNSPERSON, None), "taken": False}] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
+    cards.extend([{"card": (Role.DETECTIVE, None), "taken": False}] * ROLE_DISTRIBUTION[Role.DETECTIVE])
+    cards.extend([{"card": (Role.DOCTOR, None), "taken": False}] * ROLE_DISTRIBUTION[Role.DOCTOR])
+
+    # Stringify the list items in preparation for encryption
+    encrypted_cards = [{
+        "card": (encrypt(json.dumps(block["card"], cls=EnumEncoder))),
+        "taken": block["taken"]
+    } for block in cards]
+    random.shuffle(encrypted_cards)
+    data = {
+        "cards": json.dumps(encrypted_cards, cls=EnumEncoder),
+        "stage": json.dumps(Stage.SETUP, cls=EnumEncoder),
+        "step": 0
+    }
+    print("when {} {}".format(ME, ROLE))
+    send_to_next_player('setup', data, GET=False)
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
@@ -108,10 +142,13 @@ class MainHandler(tornado.web.RequestHandler):
         print("Player {} has joined the game!".format(ME))
         data = {"stage": Stage.INITIALIZATION}
 
-        # Hearbeat
-        heartbeat(self)
-        day_round(self)
-        night_round(self)
+        # Start the setup process if first player
+        if ME == 0: setup(self)
+
+        # Heartbeat
+        heartbeat(self) # TODO: Make asynchronous
+        #day_round(self)
+        #night_round(self)
         #r = requests.post("http://localhost:8870/setup/",headers=HEADERS,data=json.dumps(data))
         #r = requests.post("http://localhost:8871/setup/",headers=HEADERS,data=json.dumps(data))
 
@@ -136,9 +173,10 @@ class SetupHandler(tornado.web.RequestHandler):
 
 
     def decrypt(self, enc_cards, key):
+        print("decrypting")
         dec_cards = []
 
-        # if(not(ctr_decrypt_counter)):
+        #if(not(ctr_decrypt_counter)):
         ctr_decrypt_counter = Counter.new(128, initial_value=ctr_iv)
 
         for c in enc_cards:
@@ -150,7 +188,7 @@ class SetupHandler(tornado.web.RequestHandler):
         return dec_cards
 
     def encrypt(self, cards, key):
-        print("encrypt")
+        print("encrypting")
         enc_cards = []
 
         ctr_iv = int(hexlify(Random.new().read(AES.block_size)), 16)
@@ -175,30 +213,62 @@ class SetupHandler(tornado.web.RequestHandler):
     def ctr_unpad_message(self, in_message):
         return in_message[:-in_message[-1]]
 
-    def choose(self, cards):
-        index = Random.random.randint(0, len(cards)-1)
-        return index, cards[index]
+    def post(self):
+        cards = json.loads(self.get_body_argument("cards"), object_hook=as_enum)
+        stage = json.loads(self.get_body_argument("stage"), object_hook=as_enum)
+        step = int(self.get_body_argument("step"))
 
-    def get(self):
-        self.write("Setting up for player {}".format(ME))
+        assert stage == Stage.SETUP, "Players do not agree on current stage!"
+        STATE = Stage.SETUP
 
-        if ME in [0,1]:
-            x = 0 # TODO: secret key
-            cards = [(Role.MAFIA, x)] * ROLE_DISTRIBUTION[Role.MAFIA]
-            cards.extend([(Role.TOWNSPERSON, None)] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
-            cards.extend([(Role.DETECTIVE, None)] * ROLE_DISTRIBUTION[Role.DETECTIVE])
-            cards.extend([(Role.DOCTOR, None)] * ROLE_DISTRIBUTION[Role.DOCTOR])
+        # Cards have reached first player again
+        if ME == 0: step += 1
 
-            # Stringify the list items in preparation for encryption
-            stringified_cards = [json.dumps(card, cls=EnumEncoder) for card in cards]
-            shuffled_cards = Random.random.shuffle(self.encrypt(stringified_cards, x))
-            data = {"cards": shuffled_cards, "stage": Stage.SHUFFLING}
-            print("when" + str(ME) + ROLE)
+        # In first step, all players encrypt one card
+        if step == 0:
+            available_card_indices = [i for i, block in enumerate(cards) if not block["taken"]]
+            index = random.choice(available_card_indices)
+            cards[index]["card"] = encrypt(cards[index]["card"])
+            cards[index]["taken"] = True
+            random.shuffle(cards)
 
-            post_url = "{server_url}:{player}/setup".format(server_url=SERVER_URL, player=PLAYERS[3])
-            requests.post(post_url, headers=HEADERS, data=json.dumps(data))
-        elif ME == 2:
-            print("Player 3 got a message: " + self.get_argument('cards'))
+            data = {
+                "cards": json.dumps(cards, cls=EnumEncoder),
+                "stage": json.dumps(Stage.SETUP, cls=EnumEncoder),
+                "step": step
+            }
+            send_to_next_player('setup', data, GET=False)
+
+        # In second step, all players decrypt everything and get the plaintext card
+        elif step == 1:
+            my_card_index = -1
+            for i, block in enumerate(cards):
+                decrypted_card = json.loads(decrypt(block["card"]), object_hook=as_enum)
+                if isinstance(decrypted_card[0], Role):
+                    ROLE, MAFIA_SECRET_KEY = decrypted_card
+                    print(ME, ROLE)
+                    my_card_index = i
+                    break
+
+            if my_card_index == -1: raise Exception("No valid plaintext card found!")
+
+            # Remove my card from the card list
+            cards.pop(my_card_index)
+            data = {
+                "cards": json.dumps(cards, cls=EnumEncoder),
+                "stage": json.dumps(Stage.SETUP, cls=EnumEncoder),
+                "step": step
+            }
+            send_to_next_player('setup', data, GET=False)
+
+        # Setup process done!
+        elif step == 2:
+            print("Setup process done!")
+            STATE = Stage.NIGHT
+            # TODO: Continue on to next step
+
+        else:
+            raise Exception("Invalid step!")
 
 class NightHandler(tornado.web.RequestHandler):
     def get(self):
@@ -259,6 +329,19 @@ def make_app():
 def verify_hearbeat(heartbeat):
     pass
 
+def send_to_next_player(endpoint, data, timeout=REQUEST_TIMEOUT, GET=True):
+    url = "{server_url}:{next_player}/{endpoint}".format(
+        server_url=SERVER_URL,
+        next_player=PLAYERS[(ME + 1) % len(PLAYERS)],
+        endpoint=endpoint
+    )
+
+    try:
+        if GET: return requests.get(url, data=data, timeout=timeout)
+        return requests.post(url, data=data, timeout=timeout)
+    except requests.exceptions.ReadTimeout:
+        pass # TODO: Do something about timeouts?
+
 if __name__ == "__main__":
     # Run server with python mafia.py 'list of player ips' 'ME'
     # ex: python mafia.py '8871, 8872, 8873, 8874, 8875, 8876, 8877, 8878, 8879, 8880' 0
@@ -269,6 +352,12 @@ if __name__ == "__main__":
     # set global variables
     PLAYERS = [int(x) for x in argv[0].split(',')]
     ME = int(argv[1])
+
+    # Check that the number of roles equals the number of players
+    NUM_PLAYERS = len(PLAYERS)
+    NUM_ROLES = sum(ROLE_DISTRIBUTION.values())
+    assert NUM_ROLES == NUM_PLAYERS, "{} roles but {} players!".format(NUM_ROLES, NUM_PLAYERS)
+
     # start the mafia server
     port = PLAYERS[ME]
     app.listen(port)
