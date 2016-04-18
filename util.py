@@ -6,6 +6,8 @@ from common import *
 from enum import Enum
 import json
 
+# TODO: Create appropriate custom exception subclasses
+
 #======================================================================
 # Handle serialization of enums
 # Source: https://stackoverflow.com/a/24482806
