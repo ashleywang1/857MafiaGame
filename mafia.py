@@ -8,6 +8,7 @@ import sys
 from Crypto.Cipher import AES
 from Crypto import Random
 from Crypto.Util import Counter
+from binascii import hexlify
 
 headers = {"Content-Type":"application/json", "Upgrade": "websocket",
     "Connection": "Upgrade"}
@@ -89,29 +90,59 @@ class SetupHandler(tornado.web.RequestHandler):
     # Player A: reveal A's secret key
     # Player B: reveal B's secret key
 
-    def decrypt(enc_cards, key, ctr):
-        # TODO: need to retrieve the ctr here?
-        cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
+    ctr_decrypt_counter = None;
+    ctr_encrypt_counter = None;
+
+    def encrypting_setup():
+        # TODO: determine best way to make the key
+
+        original_key = 'This is my k\u00eay!! The extra stuff will be truncated before using it.'
+        key = original_key.encode('utf-8')[0:32]
+
+        # message = '0123456789'.encode('utf-8')
+
+
+
+    def decrypt(enc_cards, key):
         dec_cards = []
+
+        # if(not(ctr_decrypt_counter)): 
+        ctr_decrypt_counter = Counter.new(128, initial_value=ctr_iv)
+
         for c in enc_cards:
-            pt = cipher.decrypt(c)
-            dec_cards.append(pt)
+            ctr_cipher_decrypt = AES.new(key, AES.MODE_CTR, counter=ctr_decrypt_counter)
+            ctr_msg_decrypt = ctr_cipher_decrypt.decrypt(b64decode(c))
+            ctr_unpadded_message = ctr_unpad_message(ctr_msg_decrypt)
+
+            dec_cards.append(ctr_unpad_message)
+
         return dec_cards
 
     def encrypt(cards, key):
-        # TODO
         print("encrypt")
         enc_cards = []
-        iv = Random.new().read(AES.block_size)
-        ctr = Counter.new(128)
-        cipher = AES.new(key, AES.MODE_CTR, counter=ctr)
-        for c in cards:
 
-            # TODO: is card a string? (how may byte literal)
-            ct = cipher.encrypt(b'PLAINTEXT GOES HERE')
-            enc_cards.append(ct)
+        ctr_iv = int(hexlify(Random.new().read(AES.block_size)), 16)
+        ctr_encrypt_counter = Counter.new(128, initial_value=ctr_iv)
+
+        for c in cards:
+            message = c.encode('utf-8')
+            ctr_padded_message = ctr_pad_message(message)
+            ctr_padded_message = ctr_pad_message(c)
+            ctr_cipher_encrypt = AES.new(key, AES.MODE_CTR, counter=ctr_encrypt_counter)
+            ctr_msg_encrypt = b64encode(ctr_cipher_encrypt.encrypt(ctr_padded_message))
+            enc_cards.append(ctr_msg_encrypt)
 
         return enc_cards
+
+    def ctr_pad_message(in_message):
+        # http://stackoverflow.com/questions/14179784/python-encrypting-with-pycrypto-aes
+        # We use PKCS7 padding
+        length = 16 - (len(in_message) % 16)
+        return (in_message + bytes([length])*length)
+
+    def ctr_unpad_message(in_message):
+        return in_message[:-in_message[-1]]
 
     def choose(cards):
         card = cards[0]
