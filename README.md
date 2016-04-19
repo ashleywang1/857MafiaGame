@@ -7,7 +7,7 @@ Group Members
 ------------------------------------
 Ashley Wang, Cristhian Ulloa, Ronald Gil
 
-Dependencies:
+Dependencies
 ------------------------------------
 - [Tornado](http://www.tornadoweb.org/)
   - `pip install tornado`
