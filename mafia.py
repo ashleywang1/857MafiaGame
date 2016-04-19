@@ -71,11 +71,9 @@ TOWN_DEAD = False
 #======================================================================
 
 def send_heartbeats():
-    futures = []
     for i, player in enumerate(PLAYERS):
         if i == ME: continue # Don't send heartbeat to yourself
-        future = send_to_player(player, 'heartbeat', callback=verify_hearbeat(i))
-        futures.append(future)
+        send_to_player(player, 'heartbeat', callback=verify_hearbeat(i))
 
 def day_round(self):
     for i, player in enumerate(PLAYERS):
@@ -239,7 +237,7 @@ class SetupHandler(tornado.web.RequestHandler):
             print('Setup process done!')
             send_heartbeats() # TODO: Get all players to do this here?
 
-#           # Set up state for next stage
+            # Set up state for next stage
             CRYPTO_INSTANCE = None
             STATE = Stage.DAY
             # TODO: Continue on to next step
@@ -307,7 +305,7 @@ def load_request_body(body):
 def verify_hearbeat(player):
     def check_heartbeat_response(response):
         try:
-            heartbeat = json.loads(response.body.decode(ENCODING), object_hook=as_enum)
+            heartbeat = load_request_body(response.body)
             # TODO: Do something if there is disagreement
             assert heartbeat['state'] == STATE, 'Heartbeat state did not match!'
             assert heartbeat['round'] == ROUND, 'Round numbers do not match!'
