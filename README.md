@@ -1,4 +1,5 @@
 # 857MafiaGame
+Contributors: Ashley Wang, Ron Gil, Cristhian Ulloa
 
 Dependencies:
 	- Flask
