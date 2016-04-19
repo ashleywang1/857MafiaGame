@@ -1,98 +1,58 @@
-from Crypto.Cipher import AES
-from Crypto import Random
-from base64 import b64encode, b64decode
-from Crypto.Util import Counter
-from binascii import hexlify
+"""
+Local cryptography module for use in different protocols.
+"""
 
-class Cryptography(object):
+import os
+from base64 import encodebytes, decodebytes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.backends import default_backend
+
+ENCODING = 'UTF-8'
+
+class CommutativeCipher:
+    """
+    Encryption and decryption using a commutative cipher.
+    """
+
     def __init__(self):
+        key = os.urandom(32)
+        iv = os.urandom(16)
+        self.cipher = Cipher(algorithms.AES(key), modes.OFB(iv), backend=default_backend())
 
-        # TODO: need to create a random key
-        original_key = 'This is my k\u00eay!! The extra stuff will be truncated before using it.'
-        self.key = original_key.encode('utf-8')[0:32]
+    def encrypt(self, plaintext, base64=False):
+        """
+        Encrypts a plaintext message and returns base 64 encoded ciphertext.
 
-        self.ctr_iv = int(hexlify(Random.new().read(AES.block_size)), 16)
-        self.ctr_decrypt_counter = Counter.new(128, initial_value=self.ctr_iv)
-        self.ctr_encrypt_counter = Counter.new(128, initial_value=self.ctr_iv)
+        If base64 is specified, decodes from base64 first.
+        """
+        plaintext = plaintext.encode(ENCODING)
+        if base64: plaintext = decodebytes(plaintext)
 
-        self.ctr_cipher_encrypt = AES.new(key, AES.MODE_CTR, counter=ctr_encrypt_counter)
-        self.ctr_cipher_decrypt = AES.new(key, AES.MODE_CTR, counter=ctr_decrypt_counter)
-        
+        encryptor = self.cipher.encryptor()
+        ciphertext = encryptor.update(plaintext) + encryptor.finalize()
+        return encodebytes(ciphertext).decode(ENCODING)
 
-    def encrypt(plaintext):
-        message = plaintext.encode('utf-8')
-        ctr_padded_message = self.ctr_pad_message(message)
-        ctr_msg_encrypt = b64encode(ctr_cipher_encrypt.encrypt(ctr_padded_message))
+    def decrypt(self, ciphertext, base64=False):
+        """
+        Decrypts base 64 encoded ciphertext and returns the plaintext message.
 
-    def decrypt(ciphertext):
-        ctr_msg_decrypt = ctr_cipher_decrypt.decrypt(b64decode(ciphertext))
-        ctr_unpadded_message = self.ctr_unpad_message(ctr_msg_decrypt)
+        If base64 is specified, provides result base64 encoded.
+        """
+        ciphertext = decodebytes(ciphertext.encode(ENCODING))
 
-    def ctr_pad_message(self, in_message):
-        # http://stackoverflow.com/questions/14179784/python-encrypting-with-pycrypto-aes
-        # We use PKCS7 padding
-        length = 16 - (len(in_message) % 16)
-        return (in_message + bytes([length])*length)
+        decryptor = self.cipher.decryptor()
+        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
 
-    def ctr_unpad_message(self, in_message):
-        return in_message[:-in_message[-1]]
-
-
-print('```GENERAL```')
-print('AES block size: {0}'.format(AES.block_size))
-original_key = 'This is my k\u00eay!! The extra stuff will be truncated before using it.'
-key = original_key.encode('utf-8')[0:32]
-print('Original Key: {0}'.format(original_key))
-print('Usable Key: {0}'.format(key))
-print('Base64 Encoded key: {0}'.format(b64encode(key).decode('utf-8')))
-message = '0123456789'.encode('utf-8')
-print('Original Message: {0}'.format(message))
-
-# MODE CTR
-print('```MODE CTR```')
-def ctr_pad_message(in_message):
-    # http://stackoverflow.com/questions/14179784/python-encrypting-with-pycrypto-aes
-    # We use PKCS7 padding
-    length = 16 - (len(in_message) % 16)
-    return (in_message + bytes([length])*length)
-def ctr_unpad_message(in_message):
-    return in_message[:-in_message[-1]]
+        if base64: plaintext = encodebytes(plaintext)
+        return plaintext.decode(ENCODING)
 
 
-ctr_iv = int(hexlify(Random.new().read(AES.block_size)), 16)
-print('CTR IV (int): {0}'.format(ctr_iv))
-ctr_encrypt_counter = Counter.new(128, initial_value=ctr_iv)
-ctr_decrypt_counter = Counter.new(128, initial_value=ctr_iv)
+# TODO: Figure out how to set this up (assuming we plan to use g idea for mafia protocol)
+class DiffieHellman:
+    """
+    A Diffie-Hellman setup.
+    """
 
-
-# ENCRYPT FIRST MESSAGE
-ctr_padded_message = ctr_pad_message(message)
-print('Mode CTR, Padded message: {0}'.format(ctr_padded_message))
-ctr_cipher_encrypt = AES.new(key, AES.MODE_CTR, counter=ctr_encrypt_counter)
-ctr_msg_encrypt = b64encode(ctr_cipher_encrypt.encrypt(ctr_padded_message))
-print('Mode CTR, Base64 Encoded, Encrypted message: {0}'.format( ctr_msg_encrypt.decode('utf-8')))
-
-
-# DECRYPT FIRST MESSAGE
-ctr_cipher_decrypt = AES.new(key, AES.MODE_CTR, counter=ctr_decrypt_counter)
-ctr_msg_decrypt = ctr_cipher_decrypt.decrypt(b64decode(ctr_msg_encrypt))
-ctr_unpadded_message = ctr_unpad_message(ctr_msg_decrypt)
-print('Mode CTR, Decrypted message: {0}'.format(ctr_msg_decrypt))
-print('Mode CTR, Unpadded, Decrypted message: {0}'.format(ctr_unpadded_message))
-
-# ENCRYPT SECOND MESSAGE
-new_msg = 'derpy message'.encode('utf-8')
-padded_msg = ctr_pad_message(new_msg)
-print('Mode CTR, Padded message: {0}'.format(padded_msg))
-ctr_cipher_encrypt = AES.new(key, AES.MODE_CTR, counter=ctr_encrypt_counter)
-ctr_msg_encrypt = b64encode(ctr_cipher_encrypt.encrypt(padded_msg))
-print('Mode CTR, Base64 Encoded, Encrypted message: {0}'.format( ctr_msg_encrypt.decode('utf-8')))
-
-# DECRYPT SECOND MESSAGE
-ctr_cipher_decrypt = AES.new(key, AES.MODE_CTR, counter=ctr_decrypt_counter)
-ctr_msg_decrypt = ctr_cipher_decrypt.decrypt(b64decode(ctr_msg_encrypt))
-ctr_unpadded_message = ctr_unpad_message(ctr_msg_decrypt)
-print('Mode CTR, Decrypted message: {0}'.format(ctr_msg_decrypt))
-print('Mode CTR, Unpadded, Decrypted message: {0}'.format(ctr_unpadded_message))
-
-
+    def __init__(self):
+        pass
