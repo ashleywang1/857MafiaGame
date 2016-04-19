@@ -204,14 +204,6 @@ class SetupHandler(tornado.web.RequestHandler):
 
         return enc_cards
 
-    def ctr_pad_message(self, in_message):
-        # http://stackoverflow.com/questions/14179784/python-encrypting-with-pycrypto-aes
-        # We use PKCS7 padding
-        length = 16 - (len(in_message) % 16)
-        return (in_message + bytes([length])*length)
-
-    def ctr_unpad_message(self, in_message):
-        return in_message[:-in_message[-1]]
 
     def post(self):
         cards = json.loads(self.get_body_argument("cards"), object_hook=as_enum)
