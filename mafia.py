@@ -3,53 +3,43 @@ Mafia Game Startup File
 """
 
 # Standard library imports
-from base64 import b64encode, b64decode
-from binascii import hexlify
 import json
+from random import SystemRandom
 import socket
 import sys
 
 # External dependencies
-from Crypto import Random
-from Crypto.Cipher import AES
-from Crypto.Random import random
-from Crypto.Util import Counter
-import requests
+from tornado.httpclient import AsyncHTTPClient
 import tornado.ioloop
 from tornado.options import parse_command_line
 import tornado.web
 
 # Local file imports
 from common import *
+from crypto import CommutativeCipher
 from util import EnumEncoder, as_enum
-
-#======================================================================
-# DUMMY TEMPORARY FUNCTIONS
-# TODO: Remove once crypto module is ready
-#======================================================================
-def encrypt(text):
-    print("encrypting")
-    return text
-
-def decrypt(text):
-    print("decrypting")
-    return text
-#======================================================================
 
 #======================================================================
 # Global State + Constants
 #======================================================================
+RANDOM = SystemRandom()
+CRYPTO_INSTANCE = None # Instances created and used by various protocols
+
+CONNECT_TIMEOUT = 1 # Seconds
 REQUEST_TIMEOUT = 1 # Seconds
+ENCODING = 'UTF-8'
 HEADERS = {
-    "Content-Type": "application/json",
-    "Upgrade": "websocket",
-    "Connection": "Upgrade"
+    'Content-Type': 'application/json',
+    'Upgrade': 'websocket',
+    'Connection': 'Upgrade'
 }
+
+ASYNC_HTTP_CLIENT = AsyncHTTPClient()
 
 # This should later be moved to the Config Files
 SERVER_IP = socket.gethostbyname(socket.gethostname())
-SERVER_URL = "http://{}".format(SERVER_IP)
-#player = [int(x) for x in raw_input("IP List: ").split(',')]
+SERVER_URL = 'http://{}'.format(SERVER_IP)
+#player = [int(x) for x in raw_input('IP List: ').split(',')]
 PLAYERS = list(range(8870, 8880+1))
 # Another possible form of the player list:
 #['https://localhost:8870/', 'https://localhost:8871/', 'https://localhost:8872/', 'https://localhost:8873/', 'https://localhost:8874/', 'https://localhost:8875/', 'https://localhost:8876/', 'https://localhost:8877/', 'https://localhost:8878/', 'https://localhost:8879/', 'https://localhost:8880/']
@@ -76,81 +66,78 @@ ROUND = 0
 LYNCHED = []
 KILLED = []
 
+MAFIA_DEAD = False
+TOWN_DEAD = False
 #======================================================================
 
-def heartbeat(self):
+def send_heartbeats():
+    futures = []
     for i, player in enumerate(PLAYERS):
         if i == ME: continue # Don't send heartbeat to yourself
-
-        hostname = SERVER_URL + ":" + str(player) + "/heartbeat"
-        print(hostname)
-        try:
-            r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
-            heartbeat = json.loads(r.text, object_hook=as_enum)
-            print(heartbeat)
-            verify_hearbeat(heartbeat)
-        except Exception:
-            self.write("\nPlayer {} is not in the lobby yet!\n".format(i))
+        future = send_to_player(player, 'heartbeat', callback=verify_hearbeat(i))
+        futures.append(future)
 
 def day_round(self):
     for i, player in enumerate(PLAYERS):
         if i == ME: continue
 
-        hostname = SERVER_URL + ":" + str(player) + "/day"
         try:
-            r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
-            #print(json.loads(r.text))
+            r = send_to_player(player, 'day')
+            #print(json.loads(r.body))
         except Exception:
-            self.write("\nPlayer {} has no response!\n".format(i))
+            self.write('\nPlayer {} has no response!\n'.format(i))
 
 
 def night_round(self):
     for i, player in enumerate(PLAYERS):
         if i == ME: continue
 
-        hostname = SERVER_URL + ":" + str(player) + "/night"
         try:
-            r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
-            print(json.loads(r))
-        except Exception:
-            pass
+            r = send_to_player(player, 'night')
+            wait(r)
+            print(json.loads(r.result().body))
+        except tornado.httpclient.HTTPError as e:
+            pass # TODO: Handle this
 
 def setup(self):
     x = 0 # TODO: secret key
-    cards = [{"card": (Role.MAFIA, x), "taken": False}] * ROLE_DISTRIBUTION[Role.MAFIA]
-    cards.extend([{"card": (Role.TOWNSPERSON, None), "taken": False}] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
-    cards.extend([{"card": (Role.DETECTIVE, None), "taken": False}] * ROLE_DISTRIBUTION[Role.DETECTIVE])
-    cards.extend([{"card": (Role.DOCTOR, None), "taken": False}] * ROLE_DISTRIBUTION[Role.DOCTOR])
+    cards = [{'card': (Role.MAFIA, x), 'taken': False}] * ROLE_DISTRIBUTION[Role.MAFIA]
+    cards.extend([{'card': (Role.TOWNSPERSON, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
+    cards.extend([{'card': (Role.DETECTIVE, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.DETECTIVE])
+    cards.extend([{'card': (Role.DOCTOR, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.DOCTOR])
 
     # Stringify the list items in preparation for encryption
+    global CRYPTO_INSTANCE
+    CRYPTO_INSTANCE = CommutativeCipher()
     encrypted_cards = [{
-        "card": (encrypt(json.dumps(block["card"], cls=EnumEncoder))),
-        "taken": block["taken"]
+        'card': (CRYPTO_INSTANCE.encrypt(json.dumps(block['card'], cls=EnumEncoder))),
+        'taken': block['taken']
     } for block in cards]
-    random.shuffle(encrypted_cards)
+    RANDOM.shuffle(encrypted_cards)
     data = {
-        "cards": json.dumps(encrypted_cards, cls=EnumEncoder),
-        "stage": json.dumps(Stage.SETUP, cls=EnumEncoder),
-        "step": 0
+        'cards': json.dumps(encrypted_cards, cls=EnumEncoder),
+        'stage': json.dumps(Stage.SETUP, cls=EnumEncoder),
+        'step': 0
     }
-    print("when {} {}".format(ME, ROLE))
-    send_to_next_player('setup', data, GET=False)
+    print('when {} {}'.format(ME, ROLE))
+    send_to_next_player('setup', data=data, GET=False)
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
-        self.write("Welcome to the Mafia Game Lobby!")
-        print("Player {} has joined the game!".format(ME))
-        data = {"stage": Stage.INITIALIZATION}
+        self.write('Welcome to the Mafia Game Lobby!')
+        print('Player {} has joined the game!'.format(ME))
+        data = {'stage': Stage.INITIALIZATION}
+
+        # Check initial state
+        send_heartbeats()
 
         # Start the setup process if first player
         if ME == 0: setup(self)
 
-        # Heartbeat
-        heartbeat(self) # TODO: Make asynchronous
         #day_round(self)
         #night_round(self)
-        #r = requests.post("http://localhost:8870/setup/",headers=HEADERS,data=json.dumps(data))
-        #r = requests.post("http://localhost:8871/setup/",headers=HEADERS,data=json.dumps(data))
+        #r = requests.post('http://localhost:8870/setup/',headers=HEADERS,data=json.dumps(data))
+        #r = requests.post('http://localhost:8871/setup/',headers=HEADERS,data=json.dumps(data))
 
 class SetupHandler(tornado.web.RequestHandler):
     # Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
@@ -159,115 +146,112 @@ class SetupHandler(tornado.web.RequestHandler):
     # Player A: reveal A's secret key
     # Player B: reveal B's secret key
 
-    ctr_decrypt_counter = None;
-    ctr_encrypt_counter = None;
+    def first_stage(self, cards):
+        """
+        Randomly chooses a single card and encrypts it.
+        Returns the shuffled cards containing the newly encrypted card.
+        """
+        available_card_indices = [i for i, block in enumerate(cards) if not block['taken']]
+        index = RANDOM.choice(available_card_indices)
+        cards[index]['card'] = CRYPTO_INSTANCE.encrypt(cards[index]['card'], base64=True)
+        cards[index]['taken'] = True
+        RANDOM.shuffle(cards)
+        return cards
 
-    def encrypting_setup(self):
-        # TODO: determine best way to make the key
+    def second_stage(self, cards, first_player):
+        my_card_index = -1
 
-        original_key = 'This is my k\u00eay!! The extra stuff will be truncated before using it.'
-        key = original_key.encode('utf-8')[0:32]
+        # First player decrypts all cards before sending on
+        if first_player: decrypted_cards = []
+        for i, card in enumerate(cards):
+            # Try to parse the card and keep going upon failure
+            if first_player:
+                card = card['card']
+                # Remove first player's layer on encryption
+                decrypted_value = CRYPTO_INSTANCE.decrypt(card, base64=True)
+                decrypted_cards.append(decrypted_value)
 
-        # message = '0123456789'.encode('utf-8')
+            try:
+                decrypted_json = CRYPTO_INSTANCE.decrypt(card)
+                decrypted_card = json.loads(decrypted_json, object_hook=as_enum)
+            except json.JSONDecodeError:
+                continue
+            except UnicodeDecodeError:
+                continue
 
+            if isinstance(decrypted_card[0], Role):
+                ROLE, MAFIA_SECRET_KEY = decrypted_card
+                print(ME, ROLE)
+                my_card_index = i
 
+                # If not the first player, terminate early
+                # First player must keep going since he/she needs to decrypt all
+                if not first_player: break
 
-    def decrypt(self, enc_cards, key):
-        print("decrypting")
-        dec_cards = []
+        if my_card_index == -1: raise Exception('No valid plaintext card found!')
 
-        #if(not(ctr_decrypt_counter)):
-        ctr_decrypt_counter = Counter.new(128, initial_value=ctr_iv)
+        # Replace card with decrypted if first player
+        if first_player: cards = decrypted_cards
 
-        for c in enc_cards:
-            ctr_cipher_decrypt = AES.new(key, AES.MODE_CTR, counter=ctr_decrypt_counter)
-            ctr_msg_decrypt = ctr_cipher_decrypt.decrypt(b64decode(c))
-            ctr_unpadded_message = self.ctr_unpad_message(ctr_msg_decrypt)
-            dec_cards.append(ctr_unpadded_message)
-
-        return dec_cards
-
-    def encrypt(self, cards, key):
-        print("encrypting")
-        enc_cards = []
-
-        ctr_iv = int(hexlify(Random.new().read(AES.block_size)), 16)
-        ctr_encrypt_counter = Counter.new(128, initial_value=ctr_iv)
-
-        for c in cards:
-            message = c.encode('utf-8')
-            ctr_padded_message = self.ctr_pad_message(message)
-            ctr_padded_message = self.ctr_pad_message(c)
-            ctr_cipher_encrypt = AES.new(key, AES.MODE_CTR, counter=ctr_encrypt_counter)
-            ctr_msg_encrypt = b64encode(ctr_cipher_encrypt.encrypt(ctr_padded_message))
-            enc_cards.append(ctr_msg_encrypt)
-
-        return enc_cards
-
+        # Remove my card from the card list
+        cards.pop(my_card_index)
+        return cards
 
     def post(self):
-        cards = json.loads(self.get_body_argument("cards"), object_hook=as_enum)
-        stage = json.loads(self.get_body_argument("stage"), object_hook=as_enum)
-        step = int(self.get_body_argument("step"))
+        first_player = (ME == 0)
+        data = load_request_body(self.request.body)
+        cards = json.loads(data['cards'], object_hook=as_enum)
+        stage = json.loads(data['stage'], object_hook=as_enum)
+        step = int(data['step'])
 
-        assert stage == Stage.SETUP, "Players do not agree on current stage!"
+        assert stage == Stage.SETUP, 'Players do not agree on current stage!'
+
+        # Set appropriate state
+        global CRYPTO_INSTANCE
+        if not CRYPTO_INSTANCE: CRYPTO_INSTANCE = CommutativeCipher()
         STATE = Stage.SETUP
 
-        # Cards have reached first player again
-        if ME == 0: step += 1
+        # Cards have reached first player again, so next step should start
+        if first_player: step += 1
 
         # In first step, all players encrypt one card
         if step == 0:
-            available_card_indices = [i for i, block in enumerate(cards) if not block["taken"]]
-            index = random.choice(available_card_indices)
-            cards[index]["card"] = encrypt(cards[index]["card"])
-            cards[index]["taken"] = True
-            random.shuffle(cards)
-
+            cards = self.first_stage(cards)
             data = {
-                "cards": json.dumps(cards, cls=EnumEncoder),
-                "stage": json.dumps(Stage.SETUP, cls=EnumEncoder),
-                "step": step
+                'cards': json.dumps(cards, cls=EnumEncoder),
+                'stage': json.dumps(Stage.SETUP, cls=EnumEncoder),
+                'step': step
             }
-            send_to_next_player('setup', data, GET=False)
+            send_to_next_player('setup', data=data, GET=False)
 
         # In second step, all players decrypt everything and get the plaintext card
         elif step == 1:
-            my_card_index = -1
-            for i, block in enumerate(cards):
-                decrypted_card = json.loads(decrypt(block["card"]), object_hook=as_enum)
-                if isinstance(decrypted_card[0], Role):
-                    ROLE, MAFIA_SECRET_KEY = decrypted_card
-                    print(ME, ROLE)
-                    my_card_index = i
-                    break
-
-            if my_card_index == -1: raise Exception("No valid plaintext card found!")
-
-            # Remove my card from the card list
-            cards.pop(my_card_index)
+            cards = self.second_stage(cards, first_player)
             data = {
-                "cards": json.dumps(cards, cls=EnumEncoder),
-                "stage": json.dumps(Stage.SETUP, cls=EnumEncoder),
-                "step": step
+                'cards': json.dumps(cards, cls=EnumEncoder),
+                'stage': json.dumps(Stage.SETUP, cls=EnumEncoder),
+                'step': step
             }
-            send_to_next_player('setup', data, GET=False)
+            send_to_next_player('setup', data=data, GET=False)
 
         # Setup process done!
         elif step == 2:
-            print("Setup process done!")
-            STATE = Stage.NIGHT
+            print('Setup process done!')
+            send_heartbeats() # TODO: Get all players to do this here?
+
+#           # Set up state for next stage
+            CRYPTO_INSTANCE = None
+            STATE = Stage.DAY
             # TODO: Continue on to next step
 
-        else:
-            raise Exception("Invalid step!")
+        else: raise Exception('Invalid step reached during setup process!')
 
 class NightHandler(tornado.web.RequestHandler):
     def get(self):
         self.write("It's night!")
-        print("night")
-        #data = {"data":[]}
-        #r = requests.post("http://localhost:8870/setup/",headers=HEADERS,data=json.dumps(data))
+        print('night')
+        #data = {'data':[]}
+        #r = requests.post('http://localhost:8870/setup/',headers=HEADERS,data=json.dumps(data))
 
 class DayHandler(tornado.web.RequestHandler):
     def lynch(self, player):
@@ -278,63 +262,84 @@ class DayHandler(tornado.web.RequestHandler):
 
     def get(self):
         self.write("It's day!")
-        print("day")
+        print('day')
         player_to_lynch = str(-1)
         self.write(player_to_lynch)
 
-        #data = {"data":[]}
+        #data = {'data':[]}
 
 class MessageHandler(tornado.web.RequestHandler):
     def get(self):
-        self.write("No messages received!")
-        print("msg")
-        #data = {"data":[]}
-        #r = requests.post("http://localhost:8870/setup/",headers=HEADERS,data=json.dumps(data))
+        self.write('No messages received!')
+        print('msg')
+        #data = {'data':[]}
+        #r = requests.post('http://localhost:8870/setup/',headers=HEADERS,data=json.dumps(data))
 
 class HeartbeatHandler(tornado.web.RequestHandler):
     # synchronize STATE = {Day, Night, Setup}
     # synchronize ROUND = 0 to numPlayers at most
-    # synchronize deadPlayers = {LYNCHED[], KILLED[]}
-    # synchronize mafiaAllDead = False, True
-    # synchronize townspeopleAllDead = False,True
+    # synchronize dead_players = {LYNCHED[], KILLED[]}
+    # synchronize mafia_dead = False, True
+    # synchronize townspeople_dead = False,True
     def get(self):
         heartbeat = {
             'state': STATE,
             'round': ROUND,
-            'deadPlayers': LYNCHED + KILLED,
-            'mafiaAllDead': False,
-            'townspeopleAllDead': False
+            'dead_players': LYNCHED + KILLED,
+            'mafia_dead': False,
+            'town_dead': False
         }
         self.write(json.dumps(heartbeat, cls=EnumEncoder))
 
 def make_app():
     return tornado.web.Application([
-        (r"/", MainHandler),
-        (r"/setup", SetupHandler),
-        (r"/night", NightHandler),
-        (r"/day", DayHandler),
-        (r"/message", MessageHandler),
-        (r"/heartbeat", HeartbeatHandler)
+        (r'/', MainHandler),
+        (r'/setup', SetupHandler),
+        (r'/night', NightHandler),
+        (r'/day', DayHandler),
+        (r'/message', MessageHandler),
+        (r'/heartbeat', HeartbeatHandler)
     ])
 
-# FIXME: Implement me :D
-def verify_hearbeat(heartbeat):
-    pass
+def load_request_body(body):
+    return json.loads(body.decode(ENCODING), object_hook=as_enum)
 
-def send_to_next_player(endpoint, data, timeout=REQUEST_TIMEOUT, GET=True):
-    url = "{server_url}:{next_player}/{endpoint}".format(
+def verify_hearbeat(player):
+    def check_heartbeat_response(response):
+        try:
+            heartbeat = json.loads(response.body.decode(ENCODING), object_hook=as_enum)
+            # TODO: Do something if there is disagreement
+            assert heartbeat['state'] == STATE, 'Heartbeat state did not match!'
+            assert heartbeat['round'] == ROUND, 'Round numbers do not match!'
+            assert heartbeat['dead_players'] == LYNCHED + KILLED, 'Dead players list does not match!'
+            assert heartbeat['mafia_dead'] == MAFIA_DEAD, 'Mafia dead (end condition) disagreement!'
+            assert heartbeat['town_dead'] == TOWN_DEAD, 'Town dead (end condition) disagreement!'
+            print('Heartbeat check by player {} for player {} successful!'.format(ME, player))
+        except json.JSONDecodeError:
+            raise Exception('Problem parsing heartbeat from player {}!'.format(player))
+
+    return check_heartbeat_response
+
+def send_to_next_player(endpoint, data=None, callback=None,
+                        connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
+    next_player = PLAYERS[(ME + 1) % len(PLAYERS)]
+    send_to_player(next_player, endpoint, data, callback=callback,
+                   connect_timeout=connect_timeout, request_timeout=request_timeout, GET=GET)
+
+def send_to_player(player, endpoint, data=None, callback=None,
+                   connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
+    url = '{server_url}:{player}/{endpoint}'.format(
         server_url=SERVER_URL,
-        next_player=PLAYERS[(ME + 1) % len(PLAYERS)],
+        player=player,
         endpoint=endpoint
     )
 
-    try:
-        if GET: return requests.get(url, data=data, timeout=timeout)
-        return requests.post(url, data=data, timeout=timeout)
-    except requests.exceptions.ReadTimeout:
-        pass # TODO: Do something about timeouts?
+    method = 'GET' if GET else 'POST'
+    if not GET and data is not None: data = json.dumps(data, cls=EnumEncoder)
+    return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
+                                   connect_timeout=connect_timeout, request_timeout=request_timeout)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Run server with python mafia.py 'list of player ips' 'ME'
     # ex: python mafia.py '8871, 8872, 8873, 8874, 8875, 8876, 8877, 8878, 8879, 8880' 0
     app = make_app()
@@ -348,7 +353,7 @@ if __name__ == "__main__":
     # Check that the number of roles equals the number of players
     NUM_PLAYERS = len(PLAYERS)
     NUM_ROLES = sum(ROLE_DISTRIBUTION.values())
-    assert NUM_ROLES == NUM_PLAYERS, "{} roles but {} players!".format(NUM_ROLES, NUM_PLAYERS)
+    assert NUM_ROLES == NUM_PLAYERS, '{} roles but {} players!'.format(NUM_ROLES, NUM_PLAYERS)
 
     # start the mafia server
     port = PLAYERS[ME]
