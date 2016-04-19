@@ -1,10 +1,15 @@
-# 857MafiaGame
-Contributors: Ashley Wang, Ron Gil, Cristhian Ulloa
+6.857 Secure Distributed Mafia Game
+===================================
+
+A distributed, secure mafia game created as a final project for 6.857.
+
+Group Members
+------------------------------------
+Ashley Wang, Cristhian Ulloa, Ronald Gil
 
 Dependencies:
-	- Flask
-	- TornadoServer
-	- Json, Requests
-	- PyCrypto
-
-	(pip install ujson, pip install requests, pip install tornadoserver, pip install flask, pip install pycrypto)
+------------------------------------
+- [Tornado](http://www.tornadoweb.org/)
+  - `pip install tornado`
+- [Cryptography](https://cryptography.io)
+  - `pip install cryptography`
