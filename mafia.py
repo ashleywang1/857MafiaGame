@@ -243,7 +243,7 @@ class SetupHandler(tornado.web.RequestHandler):
         # Setup process done!
         elif step == 2:
             print('Setup process done!')
-            # send_heartbeats() # TODO: Get all players to do this here?
+            send_heartbeats() # TODO: Get all players to do this here?
 
             # Set up state for next stage
             CRYPTO_INSTANCE = None
@@ -413,13 +413,13 @@ def verify_heartbeat(player):
 
     return check_heartbeat_response
 
-def send_to_next_player(endpoint, data, callback=None,
+def send_to_next_player(endpoint, data=None, callback=None,
                         connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
     next_player = PLAYERS[(ME + 1) % len(PLAYERS)]
     send_to_player(next_player, endpoint, data, callback=callback,
                    connect_timeout=connect_timeout, request_timeout=request_timeout, GET=GET)
 
-def send_to_player(player, endpoint, data, callback=None,
+def send_to_player(player, endpoint, data=None, callback=None,
                    connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
     url = '{server_url}:{player}/{endpoint}'.format(
         server_url=SERVER_URL,
