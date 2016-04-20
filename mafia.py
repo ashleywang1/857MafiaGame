@@ -196,7 +196,11 @@ class SetupHandler(tornado.web.RequestHandler):
                 'stage': json.dumps(Stage.SETUP, cls=EnumEncoder),
                 'step': step
             }
-            send_to_next_player('setup', data=data, GET=False)
+            # Extend the request timeout for the last player
+            # since the first player will start setting up the next stage
+            # before responding
+            request_timeout = 10*REQUEST_TIMEOUT if ME == len(PLAYERS) - 1 else REQUEST_TIMEOUT
+            send_to_next_player('setup', data=data, GET=False, request_timeout=request_timeout)
 
         # Setup process done!
         elif step == 2:
