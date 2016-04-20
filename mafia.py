@@ -49,10 +49,7 @@ HEADERS = {
 # This should later be moved to the Config Files
 SERVER_IP = socket.gethostbyname(socket.gethostname())
 SERVER_URL = "http://{}".format(SERVER_IP)
-#player = [int(x) for x in raw_input("IP List: ").split(',')]
 PLAYERS = list(range(8870, 8880+1))
-# Another possible form of the player list:
-#['https://localhost:8870/', 'https://localhost:8871/', 'https://localhost:8872/', 'https://localhost:8873/', 'https://localhost:8874/', 'https://localhost:8875/', 'https://localhost:8876/', 'https://localhost:8877/', 'https://localhost:8878/', 'https://localhost:8879/', 'https://localhost:8880/']
 
 # TODO: Make this variable with number of players
 ROLE_DISTRIBUTION = {
@@ -70,11 +67,34 @@ ROLE = None # Mafia, Townsperson, Doctor, Detective
 MAFIA = False
 MAFIA_SECRET_KEY = None #secret key for mafia_channel
 
-# Hearbeat settings
+# Heartbeat settings
 STATE = Stage.INITIALIZATION
 ROUND = 0
 LYNCHED = []
 KILLED = []
+def get_state():
+    return STATE
+
+def change_state(state):
+    STATE = state
+
+def get_round():
+    return ROUND
+
+# def change_round():
+#     ROUND += 1
+
+# def get_lynched():
+#     return LYNCHED
+
+# def lynch(player):
+#     LYNCHED.append(player)
+
+# def get_killed():
+#     return KILLED
+
+# def kill(player):
+#     KILLED.append(player)
 
 #======================================================================
 
@@ -89,20 +109,9 @@ def heartbeat(self):
             heartbeat = json.loads(r.text, object_hook=as_enum)
             print(heartbeat)
             verify_hearbeat(heartbeat)
+            return heartbeat
         except Exception:
             self.write("\nPlayer {} is not in the lobby yet!\n".format(i))
-
-def day_round(self):
-    for i, player in enumerate(PLAYERS):
-        if i == ME: continue
-
-        hostname = SERVER_URL + ":" + str(player) + "/day"
-        try:
-            r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
-            #print(json.loads(r.text))
-        except Exception:
-            self.write("\nPlayer {} has no response!\n".format(i))
-
 
 def night_round(self):
     for i, player in enumerate(PLAYERS):
@@ -114,6 +123,16 @@ def night_round(self):
             print(json.loads(r))
         except Exception:
             pass
+
+class MainHandler(tornado.web.RequestHandler):
+    def get(self):
+        hb = heartbeat(self)
+        STATE = hb['state']
+        if STATE == Stage.INITIALIZATION:
+            print("Welcome to the Mafia Game Lobby!")
+            print("Player {} has joined the game!".format(ME))
+            # Start the setup process if first player
+            if ME == 0: setup(self)
 
 def setup(self):
     x = 0 # TODO: secret key
@@ -136,22 +155,6 @@ def setup(self):
     print("when {} {}".format(ME, ROLE))
     send_to_next_player('setup', data, GET=False)
 
-class MainHandler(tornado.web.RequestHandler):
-    def get(self):
-        self.write("Welcome to the Mafia Game Lobby!")
-        print("Player {} has joined the game!".format(ME))
-        data = {"stage": Stage.INITIALIZATION}
-
-        # Start the setup process if first player
-        if ME == 0: setup(self)
-
-        # Heartbeat
-        heartbeat(self) # TODO: Make asynchronous
-        #day_round(self)
-        #night_round(self)
-        #r = requests.post("http://localhost:8870/setup/",headers=HEADERS,data=json.dumps(data))
-        #r = requests.post("http://localhost:8871/setup/",headers=HEADERS,data=json.dumps(data))
-
 class SetupHandler(tornado.web.RequestHandler):
     # Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
     # Player B: Encrypts A's encrypted cardList with secret y ......Sends Enc(cardList, y) to C
@@ -167,9 +170,7 @@ class SetupHandler(tornado.web.RequestHandler):
 
         original_key = 'This is my k\u00eay!! The extra stuff will be truncated before using it.'
         key = original_key.encode('utf-8')[0:32]
-
         # message = '0123456789'.encode('utf-8')
-
 
 
     def decrypt(self, enc_cards, key):
@@ -211,7 +212,8 @@ class SetupHandler(tornado.web.RequestHandler):
         step = int(self.get_body_argument("step"))
 
         assert stage == Stage.SETUP, "Players do not agree on current stage!"
-        STATE = Stage.SETUP
+        # STATE = Stage.SETUP
+        change_state(Stage.SETUP)
 
         # Cards have reached first player again
         if ME == 0: step += 1
@@ -256,11 +258,107 @@ class SetupHandler(tornado.web.RequestHandler):
         # Setup process done!
         elif step == 2:
             print("Setup process done!")
-            STATE = Stage.NIGHT
             # TODO: Continue on to next step
+            start_day_round()
 
         else:
             raise Exception("Invalid step!")
+
+def start_day_round():
+    vote = input("Which player would you like to kill?")
+    while not vote.isdigit() or int(vote) < 0 or int(vote) >= 10 or PLAYERS[int(vote)] in LYNCHED + KILLED:
+        print("Sorry! That input is invalid!")
+        vote = input("Which player would you like to kill?")
+    DayHandler.vote = vote
+    data = {
+        "stage": json.dumps(Stage.DAY, cls=EnumEncoder),
+        "step": 0
+    }
+    send_to_next_player('day', data, GET=False)
+
+
+class DayHandler(tornado.web.RequestHandler):
+
+    vote = None
+
+    def lynch(self):
+        # Get the votes from all the players
+        voteList = [int(self.vote)]
+        for i, player in enumerate(PLAYERS):
+            if i == ME: continue
+            hostname = SERVER_URL + ":" + str(player) + "/day"
+            try:
+                r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
+                v = json.loads(r.text, object_hook=as_enum)
+                voteList.append(int(v))
+            except Exception:
+                self.write("\nPlayer {} has no response!\n".format(i))
+
+        # Figure out who got the most votes
+        # tally = [voteList.count(x) for x in set(voteList)]
+        # if tally.count(max(tally)) != 1:
+        #     return False
+        deadPlayer = max(set(voteList), key=voteList.count)
+        if deadPlayer == ME: # you are dead!
+            stage = Stage.DEAD
+        LYNCHED.append(deadPlayer)
+        return True
+
+    def vote(self):
+        vote = input("Which player would you like to kill?")
+        while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS) or PLAYERS[int(vote)] in LYNCHED + KILLED:
+            print("Sorry! That input is invalid!")
+            vote = input("Which player would you like to kill?")
+        DayHandler.vote = vote
+
+    def get(self):
+        self.write(json.dumps(self.vote, cls=EnumEncoder))
+
+    def post(self):
+        print("It's day! It's time for lynching!\n")
+        stage = json.loads(self.get_body_argument("stage"), object_hook=as_enum)
+        step = int(self.get_body_argument("step"))
+
+        assert stage == Stage.DAY, "Players do not agree on current stage!"
+
+        # Voting has reached first player again
+        if ME == 0: step += 1
+
+        if step == 0: # In the first step, players cast their votes
+            self.vote()
+            data = {
+                "stage": json.dumps(Stage.DAY, cls=EnumEncoder),
+                "step": step
+            }
+            send_to_next_player('day', data, GET=False)
+            
+        elif step == 1: # In this step, everyone figures out who died
+            data = {
+                "stage": json.dumps(Stage.DAY, cls=EnumEncoder),
+                "step": step
+            }
+            self.lynch()
+            send_to_next_player('day', data, GET=False)
+        
+        elif step == 2: # start next step
+            print("Day round has ended!")
+            start_night_round()
+        else:
+            raise Exception("Invalid step!")
+
+
+def start_night_round():
+    vote = input("Which player would you like to kill?")
+    while not vote.isdigit() or int(vote) < 0 or int(vote) >= 10 or PLAYERS[int(vote)] in LYNCHED + KILLED:
+        print("Sorry! That input is invalid!")
+        vote = input("Which player would you like to kill?")
+    DayHandler.vote = vote
+    data = {
+        "stage": json.dumps(Stage.NIGHT, cls=EnumEncoder),
+        "step": 0
+    }
+    send_to_next_player('night', data, GET=False)
+
 
 class NightHandler(tornado.web.RequestHandler):
     def get(self):
@@ -269,20 +367,6 @@ class NightHandler(tornado.web.RequestHandler):
         #data = {"data":[]}
         #r = requests.post("http://localhost:8870/setup/",headers=HEADERS,data=json.dumps(data))
 
-class DayHandler(tornado.web.RequestHandler):
-    def lynch(self, player):
-        if player == ME:
-            # you are dead!
-            stage = Stage.DEAD
-        LYNCHED.append(player)
-
-    def get(self):
-        self.write("It's day!")
-        print("day")
-        player_to_lynch = str(-1)
-        self.write(player_to_lynch)
-
-        #data = {"data":[]}
 
 class MessageHandler(tornado.web.RequestHandler):
     def get(self):
@@ -297,6 +381,7 @@ class HeartbeatHandler(tornado.web.RequestHandler):
     # synchronize deadPlayers = {LYNCHED[], KILLED[]}
     # synchronize mafiaAllDead = False, True
     # synchronize townspeopleAllDead = False,True
+
     def get(self):
         heartbeat = {
             'state': STATE,
@@ -305,14 +390,15 @@ class HeartbeatHandler(tornado.web.RequestHandler):
             'mafiaAllDead': False,
             'townspeopleAllDead': False
         }
+        print(heartbeat)
         self.write(json.dumps(heartbeat, cls=EnumEncoder))
 
 def make_app():
     return tornado.web.Application([
         (r"/", MainHandler),
         (r"/setup", SetupHandler),
-        (r"/night", NightHandler),
         (r"/day", DayHandler),
+        (r"/night", NightHandler),
         (r"/message", MessageHandler),
         (r"/heartbeat", HeartbeatHandler)
     ])
