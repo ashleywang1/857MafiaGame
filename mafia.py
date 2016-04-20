@@ -110,48 +110,6 @@ class SetupHandler(tornado.web.RequestHandler):
     # Player A: reveal A's secret key
     # Player B: reveal B's secret key
 
-    ctr_decrypt_counter = None;
-    ctr_encrypt_counter = None;
-
-    def encrypting_setup(self):
-        # TODO: determine best way to make the key
-
-        original_key = 'This is my k\u00eay!! The extra stuff will be truncated before using it.'
-        key = original_key.encode('utf-8')[0:32]
-        # message = '0123456789'.encode('utf-8')
-
-    def decrypt(self, enc_cards, key):
-        print("decrypting")
-        dec_cards = []
-
-        #if(not(ctr_decrypt_counter)):
-        ctr_decrypt_counter = Counter.new(128, initial_value=ctr_iv)
-
-        for c in enc_cards:
-            ctr_cipher_decrypt = AES.new(key, AES.MODE_CTR, counter=ctr_decrypt_counter)
-            ctr_msg_decrypt = ctr_cipher_decrypt.decrypt(b64decode(c))
-            ctr_unpadded_message = self.ctr_unpad_message(ctr_msg_decrypt)
-            dec_cards.append(ctr_unpadded_message)
-
-        return dec_cards
-
-    def encrypt(self, cards, key):
-        print("encrypting")
-        enc_cards = []
-
-        ctr_iv = int(hexlify(Random.new().read(AES.block_size)), 16)
-        ctr_encrypt_counter = Counter.new(128, initial_value=ctr_iv)
-
-        for c in cards:
-            message = c.encode('utf-8')
-            ctr_padded_message = self.ctr_pad_message(message)
-            ctr_padded_message = self.ctr_pad_message(c)
-            ctr_cipher_encrypt = AES.new(key, AES.MODE_CTR, counter=ctr_encrypt_counter)
-            ctr_msg_encrypt = b64encode(ctr_cipher_encrypt.encrypt(ctr_padded_message))
-            enc_cards.append(ctr_msg_encrypt)
-
-        return enc_cards
-
     def first_stage(self, cards):
         """
         Randomly chooses a single card and encrypts it.
