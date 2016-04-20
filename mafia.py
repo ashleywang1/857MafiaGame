@@ -78,9 +78,9 @@ class MainHandler(tornado.web.RequestHandler):
             print("Welcome to the Mafia Game Lobby!")
             print("Player {} has joined the game!".format(ME))
             # Start the setup process if first player
-            if ME == 0: setup(self)
+            if ME == 0: start_setup(self)
 
-def setup(self):
+def start_setup(self):
     x = 0 # TODO: secret key
     cards = [{'card': (Role.MAFIA, x), 'taken': False}] * ROLE_DISTRIBUTION[Role.MAFIA]
     cards.extend([{'card': (Role.TOWNSPERSON, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
@@ -251,7 +251,7 @@ class DayHandler(tornado.web.RequestHandler):
         LYNCHED.append(deadPlayer)
         return True
 
-    def vote(self):
+    def cast_vote(self):
         vote = input("Which player would you like to kill?")
         while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS) or PLAYERS[int(vote)] in LYNCHED + KILLED:
             print("Sorry! That input is invalid!")
@@ -275,12 +275,12 @@ class DayHandler(tornado.web.RequestHandler):
         if step == 0: # In the first step, players cast their votes
             print('Step 0, I am voting')
             print(str(ME))
-            self.vote()
+            self.cast_vote()
             data = {
                 'stage': json.dumps(Stage.DAY, cls=EnumEncoder),
                 'step': step
             }
-            send_to_next_player('day', data, GET=False)
+            send_to_next_player('day', data=data, GET=False)
 
         elif step == 1: # In this step, everyone figures out who died
             print('Step 1, I am lynching')
@@ -289,7 +289,7 @@ class DayHandler(tornado.web.RequestHandler):
                 'step': step
             }
             self.lynch()
-            send_to_next_player('day', data, GET=False)
+            send_to_next_player('day', data=data, GET=False)
 
         elif step == 2: # start next step
             print("Day round has ended!")
