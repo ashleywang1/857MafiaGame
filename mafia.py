@@ -323,7 +323,7 @@ class DayHandler(tornado.web.RequestHandler):
                 'step': step
             }
             send_to_next_player('day', data, GET=False)
-            
+
         elif step == 1: # In this step, everyone figures out who died
             print('Step 1, I am lynching')
             data = {
@@ -332,7 +332,7 @@ class DayHandler(tornado.web.RequestHandler):
             }
             self.lynch()
             send_to_next_player('day', data, GET=False)
-        
+
         elif step == 2: # start next step
             print("Day round has ended!")
             start_night_round()
@@ -399,6 +399,9 @@ def load_request_body(body):
 
 def verify_heartbeat(player):
     def check_heartbeat_response(response):
+        if response.error is not None:
+            response.rethrow()
+
         try:
             heartbeat = load_request_body(response.body)
             # TODO: Do something if there is disagreement
