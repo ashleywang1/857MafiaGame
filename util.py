@@ -116,10 +116,10 @@ class BackgroundTaskRunner():
 
     def __run(self):
         try:
-            self.executor.submit(self.task)
-            self.executor.submit(sleep, self.repeat_interval)
-            future = self.executor.submit(self.__run)
+            future = self.executor.submit(self.task)
             future.add_done_callback(self.handle_errors)
+            self.executor.submit(sleep, self.repeat_interval)
+            self.executor.submit(self.__run)
 
         # Raised upon attempt to submit after shutdown of executor
         except RuntimeError:
