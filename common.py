@@ -4,6 +4,23 @@ other files.
 """
 
 from enum import Enum, unique
+import socket
+
+# This should later be moved to the Config Files
+SERVER_IP = socket.gethostbyname(socket.gethostname())
+SERVER_URL = 'http://{}'.format(SERVER_IP)
+
+CONNECT_TIMEOUT = 1 # Seconds
+REQUEST_TIMEOUT = 1 # Seconds
+
+HEARTBEAT_INTERVAL = 30 # Seconds
+
+ENCODING = 'UTF-8'
+HEADERS = {
+    'Content-Type': 'application/json',
+    'Upgrade': 'websocket',
+    'Connection': 'Upgrade'
+}
 
 @unique
 class Stage(Enum):
