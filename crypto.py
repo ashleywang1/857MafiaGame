@@ -5,8 +5,10 @@ Local cryptography module for use in different protocols.
 import os
 from base64 import encodebytes, decodebytes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives.asymmetric import dh
+from cryptography.hazmat.primitives.asymmetric.dh import *
 from cryptography.hazmat.backends import default_backend
+
+
 
 ENCODING = 'UTF-8'
 
@@ -53,6 +55,17 @@ class DiffieHellman:
     A Diffie-Hellman setup.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, p, g, y, x):
+        self.parameter_numbers = DHParameterNumbers(p, g)
+        self.pub_numbers = DHPublicNumbers(y, self.parameter_numbers)
+        self.priv_numbers = DHPrivateNumbers(x, self.pub_numbers)
+        self.private_key = DHParameters.generate_private_key() #this is None
 
+    def get_private_key(self):
+        return self.private_key
+
+dh_instance = DiffieHellman(17, 14, 3, 8)
+print(dh_instance)
+print(dh_instance.get_private_key()) 
+print(dh_instance.pub_numbers)
+print(dh_instance.priv_numbers)
