@@ -56,7 +56,7 @@ def send_to_player(player, endpoint, data=None, callback=None,
     return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
                                    connect_timeout=connect_timeout, request_timeout=request_timeout)
 
-def check_response_error(player, request_name='Request'):
+def check_response_error(player, request_name='Request', raise_error=True):
     """
     Callback that checks for certain exceptions and simply prints
     helpful messages (rather than throwing the exception).
@@ -66,10 +66,22 @@ def check_response_error(player, request_name='Request'):
     """
     def check(response):
         if response.error is not None:
-            # Print a helpful message if the error was simply a timeout
-            if response.error.message == 'Timeout':
-                print('{} to player {} timed out!'.format(request_name, player))
-                return True
+            try:
+                if isinstance(response.error, ConnectionRefusedError):
+                    print('{} to player {} failed! Connection refused.'.format(request_name, player))
+                    return True
+
+                if response.error.message == 'Timeout':
+                    print('{} to player {} timed out!'.format(request_name, player))
+                    return True
+
+            # Not all errors have the message attribute
+            except AttributeError:
+                pass
+
+            if raise_error: response.rethrow()
+            return
+
     return check
 
 """
@@ -83,26 +95,32 @@ class BackgroundTaskRunner():
     running = False
 
     def __init__(self, task, repeat_interval):
-        # The requests should happen asynchronously (background),
-        # so only two workers are needed (run worker + task worker)
         self.task = task
         self.repeat_interval = repeat_interval
-        self.executor = ThreadPoolExecutor(max_workers=2)
+        self.executor = ThreadPoolExecutor(max_workers=1)
 
     def start(self):
         if not self.running:
-            self.executor.submit(self.__run)
+            self.running = True
+            self.__run()
 
     def stop(self, wait=True):
         if self.running:
             self.executor.shutdown(wait=wait)
             self.running = False
 
+    def handle_errors(self, future):
+        exception = future.exception()
+        if exception:
+            print(exception)
+
     def __run(self):
         try:
-            future = self.executor.submit(self.task)
-            if future.exception(): print(future.exception())
+            self.executor.submit(self.task)
             self.executor.submit(sleep, self.repeat_interval)
-            self.executor.submit(self.__run)
+            future = self.executor.submit(self.__run)
+            future.add_done_callback(self.handle_errors)
+
+        # Raised upon attempt to submit after shutdown of executor
         except RuntimeError:
             return
