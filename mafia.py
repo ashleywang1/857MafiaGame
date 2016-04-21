@@ -307,7 +307,7 @@ def start_night_round():
     while not vote.isdigit() or int(vote) < 0 or int(vote) >= 10 or PLAYERS[int(vote)] in LYNCHED + KILLED:
         print("Sorry! That input is invalid!")
         vote = input("Which player would you like to kill?")
-    DayHandler.vote = vote
+    NightHandler.vote = vote
     data = {
         "stage": json.dumps(Stage.NIGHT, cls=EnumEncoder),
         "step": 0
@@ -316,11 +316,81 @@ def start_night_round():
 
 
 class NightHandler(tornado.web.RequestHandler):
+
+    vote = None
+
+    def kill(self):
+        # Get the votes from all the players
+        voteList = [int(self.vote)]
+        for i, player in enumerate(PLAYERS):
+            if i == ME: continue
+            hostname = SERVER_URL + ":" + str(player) + "/night"
+            try:
+                r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
+                v = json.loads(r.text, object_hook=as_enum)
+                voteList.append(int(v))
+            except Exception:
+                self.write("\nPlayer {} has no response!\n".format(i))
+
+        # Figure out who got the most votes
+        # tally = [voteList.count(x) for x in set(voteList)]
+        # if tally.count(max(tally)) != 1:
+        #     return False
+        deadPlayer = max(set(voteList), key=voteList.count)
+        if deadPlayer == ME: # you are dead!
+            stage = Stage.DEAD
+        LYNCHED.append(deadPlayer)
+        return True
+
+    def mafia_vote(self):
+        if ROLE == Role.MAFIA:
+            vote = input("Which player would you like to kill?")
+            while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS) or PLAYERS[int(vote)] in LYNCHED + KILLED:
+                print("Sorry! That input is invalid!")
+                vote = input("Which player would you like to kill?")
+            NightHandler.vote = vote
+
     def get(self):
-        self.write("It's night!")
-        print("night")
-        #data = {"data":[]}
-        #r = requests.post("http://localhost:8870/setup/",headers=HEADERS,data=json.dumps(data))
+        if ROLE == Role.MAFIA:
+            self.write(json.dumps(self.vote, cls=EnumEncoder))
+        else:
+            self.write(json.dumps(SystemRandom(), cls=EnumEncoder))
+
+    def post(self):
+        first_player = (ME == 0)
+        data = load_request_body(self.request.body)
+        stage = json.loads(data['stage'], object_hook=as_enum)
+        step = int(data['step'])
+
+        assert stage == Stage.DAY, "Players do not agree on current stage!"
+
+        # Voting has reached first player again
+        if ME == 0: step += 1
+
+        if step == 0: # In the first step, players cast their votes
+            print('Step 0, I am voting')
+            print(str(ME))
+            self.cast_vote()
+            data = {
+                'stage': json.dumps(Stage.DAY, cls=EnumEncoder),
+                'step': step
+            }
+            send_to_next_player('day', data=data, GET=False)
+
+        elif step == 1: # In this step, everyone figures out who died
+            print('Step 1, I am lynching')
+            data = {
+                'stage': json.dumps(Stage.DAY, cls=EnumEncoder),
+                'step': step
+            }
+            self.lynch()
+            send_to_next_player('day', data=data, GET=False)
+
+        elif step == 2: # start next step
+            print("Day round has ended!")
+            start_night_round()
+        else:
+            raise Exception("Invalid step!")
 
 class MessageHandler(tornado.web.RequestHandler):
     def get(self):
