@@ -5,11 +5,9 @@ Mafia Game Startup File
 # Standard library imports
 import json
 from random import SystemRandom
-import socket
 import sys
 
 # External dependencies
-from tornado.httpclient import AsyncHTTPClient
 import tornado.ioloop
 from tornado.options import parse_command_line
 import tornado.web
@@ -17,7 +15,12 @@ import tornado.web
 # Local file imports
 from common import *
 from crypto import CommutativeCipher
-from util import EnumEncoder, as_enum
+from util import (
+    EnumEncoder, as_enum, # Enum serialization
+    send_to_player, load_request_body, check_response_error, # Requests
+    BackgroundTaskRunner # Async tasks
+)
+
 
 #======================================================================
 # Global State + Constants
@@ -25,22 +28,7 @@ from util import EnumEncoder, as_enum
 RANDOM = SystemRandom()
 CRYPTO_INSTANCE = None # Instances created and used by various protocols
 
-CONNECT_TIMEOUT = 1 # Seconds
-REQUEST_TIMEOUT = 1 # Seconds
-ENCODING = 'UTF-8'
-HEADERS = {
-    'Content-Type': 'application/json',
-    'Upgrade': 'websocket',
-    'Connection': 'Upgrade'
-}
-
-ASYNC_HTTP_CLIENT = AsyncHTTPClient()
-
-# This should later be moved to the Config Files
-SERVER_IP = socket.gethostbyname(socket.gethostname())
-SERVER_URL = "http://{}".format(SERVER_IP)
-PLAYERS = list(range(8870, 8883+1))# list(range(8870, 8880+1))
-
+PLAYERS = []
 # TODO: Make this variable with number of players
 ROLE_DISTRIBUTION = {
     Role.DETECTIVE: 1,
@@ -57,6 +45,7 @@ ROLE = None # Mafia, Townsperson, Doctor, Detective
 MAFIA = False
 MAFIA_SECRET_KEY = None #secret key for mafia_channel
 
+HEARTBEAT_RUNNER = None
 # Heartbeat settings
 STATE = Stage.INITIALIZATION
 ROUND = 0
@@ -67,18 +56,19 @@ MAFIA_DEAD = False
 TOWN_DEAD = False
 #======================================================================
 
-def send_heartbeats():
-    for i, player in enumerate(PLAYERS):
-        if i == ME: continue # Don't send heartbeat to yourself
-        send_to_player(player, 'heartbeat', callback=verify_heartbeat(i))
-
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
         if STATE == Stage.INITIALIZATION:
             print("Welcome to the Mafia Game Lobby!")
             print("Player {} has joined the game!".format(ME))
+
+            # Start up asynchronous heartbeats
+            HEARTBEAT_RUNNER = BackgroundTaskRunner(HeartbeatHandler.send_heartbeats, HEARTBEAT_INTERVAL)
+            HEARTBEAT_RUNNER.start()
+
             # Start the setup process if first player
             if ME == 0: start_setup(self)
+
 
 def start_setup(self):
     x = 0 # TODO: secret key
@@ -205,7 +195,6 @@ class SetupHandler(tornado.web.RequestHandler):
         # Setup process done!
         elif step == 2:
             print('Setup process done!')
-            send_heartbeats() # TODO: Get all players to do this here?
 
             # Set up state for next stage
             CRYPTO_INSTANCE = None
@@ -301,7 +290,6 @@ class DayHandler(tornado.web.RequestHandler):
         else:
             raise Exception("Invalid step!")
 
-
 def start_night_round():
     vote = input("Which player would you like to kill?")
     while not vote.isdigit() or int(vote) < 0 or int(vote) >= 10 or PLAYERS[int(vote)] in LYNCHED + KILLED:
@@ -335,13 +323,43 @@ class HeartbeatHandler(tornado.web.RequestHandler):
     # synchronize dead_players = {LYNCHED[], KILLED[]}
     # synchronize mafia_dead = False, True
     # synchronize townspeople_dead = False,True
+    @staticmethod
+    def send_heartbeats():
+        for i, player in enumerate(PLAYERS):
+            if i == ME: continue # Don't send heartbeat to yourself
+            send_to_player(player, 'heartbeat', callback=HeartbeatHandler.verify_heartbeat(i))
+
+    @staticmethod
+    def verify_heartbeat(player):
+        def check_heartbeat_response(response):
+            # Handle any errors
+            handled = check_response_error(player, request_name='Heartbeat')(response)
+            # If there was an error, but it was handled continue
+            if handled: return
+            # Otherwise, try rethrowing any unhandled errors before continuing
+            response.rethrow()
+
+            try:
+                heartbeat = load_request_body(response.body)
+                # TODO: Do something if there is disagreement
+                assert heartbeat['state'] == STATE, 'Heartbeat state did not match!'
+                assert heartbeat['round'] == ROUND, 'Round numbers do not match!'
+                assert heartbeat['dead_players'] == LYNCHED + KILLED, 'Dead players list does not match!'
+                assert heartbeat['mafia_dead'] == MAFIA_DEAD, 'Mafia dead (end condition) disagreement!'
+                assert heartbeat['town_dead'] == TOWN_DEAD, 'Town dead (end condition) disagreement!'
+                print('Heartbeat check by player {} for player {} successful!'.format(ME, player))
+            except json.JSONDecodeError:
+                raise Exception('Problem parsing heartbeat from player {}!'.format(player))
+
+        return check_heartbeat_response
+
     def get(self):
         heartbeat = {
             'state': STATE,
             'round': ROUND,
             'dead_players': LYNCHED + KILLED,
-            'mafia_dead': False,
-            'town_dead': False
+            'mafia_dead': MAFIA_DEAD,
+            'town_dead': TOWN_DEAD
         }
         print(heartbeat)
         self.write(json.dumps(heartbeat, cls=EnumEncoder))
@@ -356,46 +374,12 @@ def make_app():
         (r"/heartbeat", HeartbeatHandler)
     ])
 
-def load_request_body(body):
-    return json.loads(body.decode(ENCODING), object_hook=as_enum)
-
-def verify_heartbeat(player):
-    def check_heartbeat_response(response):
-        if response.error is not None:
-            response.rethrow()
-
-        try:
-            heartbeat = load_request_body(response.body)
-            # TODO: Do something if there is disagreement
-            assert heartbeat['state'] == STATE, 'Heartbeat state did not match!'
-            assert heartbeat['round'] == ROUND, 'Round numbers do not match!'
-            assert heartbeat['dead_players'] == LYNCHED + KILLED, 'Dead players list does not match!'
-            assert heartbeat['mafia_dead'] == MAFIA_DEAD, 'Mafia dead (end condition) disagreement!'
-            assert heartbeat['town_dead'] == TOWN_DEAD, 'Town dead (end condition) disagreement!'
-            print('Heartbeat check by player {} for player {} successful!'.format(ME, player))
-        except json.JSONDecodeError:
-            raise Exception('Problem parsing heartbeat from player {}!'.format(player))
-
-    return check_heartbeat_response
-
 def send_to_next_player(endpoint, data=None, callback=None,
                         connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
     next_player = PLAYERS[(ME + 1) % len(PLAYERS)]
     send_to_player(next_player, endpoint, data, callback=callback,
                    connect_timeout=connect_timeout, request_timeout=request_timeout, GET=GET)
 
-def send_to_player(player, endpoint, data=None, callback=None,
-                   connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
-    url = '{server_url}:{player}/{endpoint}'.format(
-        server_url=SERVER_URL,
-        player=player,
-        endpoint=endpoint
-    )
-
-    method = 'GET' if GET else 'POST'
-    if not GET and data is not None: data = json.dumps(data, cls=EnumEncoder)
-    return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
-                                   connect_timeout=connect_timeout, request_timeout=request_timeout)
 
 if __name__ == '__main__':
     # Run server with python mafia.py 'list of player ips' 'ME'
