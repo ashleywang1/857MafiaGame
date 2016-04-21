@@ -344,11 +344,9 @@ class HeartbeatHandler(tornado.web.RequestHandler):
     def verify_heartbeat(player):
         def check_heartbeat_response(response):
             # Handle any errors
-            handled = check_response_error(player, request_name='Heartbeat')(response)
+            handled = check_response_error(PLAYERS[player], request_name='Heartbeat')(response)
             # If there was an error, but it was handled continue
             if handled: return
-            # Otherwise, try rethrowing any unhandled errors before continuing
-            response.rethrow()
 
             try:
                 heartbeat = load_request_body(response.body)
@@ -358,7 +356,7 @@ class HeartbeatHandler(tornado.web.RequestHandler):
                 assert heartbeat['dead_players'] == LYNCHED + KILLED, 'Dead players list does not match!'
                 assert heartbeat['mafia_dead'] == MAFIA_DEAD, 'Mafia dead (end condition) disagreement!'
                 assert heartbeat['town_dead'] == TOWN_DEAD, 'Town dead (end condition) disagreement!'
-                print('Heartbeat check by player {} for player {} successful!'.format(ME, player))
+                print('Heartbeat check for player {} successful!'.format(PLAYERS[player]))
             except json.JSONDecodeError:
                 raise Exception('Problem parsing heartbeat from player {}!'.format(player))
 
