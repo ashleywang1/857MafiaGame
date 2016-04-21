@@ -103,6 +103,7 @@ class SetupHandler(tornado.web.RequestHandler):
     def first_stage(self, cards):
         """
         Randomly chooses a single card and encrypts it.
+
         Returns the shuffled cards containing the newly encrypted card.
         """
         available_card_indices = [i for i, block in enumerate(cards) if not block['taken']]
@@ -113,6 +114,16 @@ class SetupHandler(tornado.web.RequestHandler):
         return cards
 
     def second_stage(self, cards, first_player):
+        """
+        First player decrypts all cards and keeps the unencrypted one before
+        passing on the rest of the cards decrypted with his/her key.
+
+        Every other player tries decrypting all the cards, keeps the one that
+        produces a valid card, and passes the rest unchanged.
+
+        Returns the set of cards in the appropriate state based on the above
+        and not including the player's own card.
+        """
         my_card_index = -1
 
         # First player decrypts all cards before sending on
