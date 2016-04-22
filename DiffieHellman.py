@@ -52,7 +52,7 @@ class DiffieHellman(object):
 		#default_keyLength = 540
 
 		default_generator = 2
-		valid_generators = [ 2, 3] #not sure what other generatos openSSL uses
+		valid_generators = [ 2, 5] #not sure what other generatos openSSL uses
 
 		# Sanity check fors generator and keyLength
 		if(generator not in valid_generators):
@@ -78,11 +78,33 @@ class DiffieHellman(object):
 		"""
 		return self.prime
 		
-	def genPrim(self):
+	def genPrime(self):
 	    """
 	    Generates a new safe-prime through openssl
 	    """
 	    # TODO: generate safe prime here
+	    
+	    prime = "00:ea:44:3a:64:04:59:64:58:b2:bc:4f:4a:89:ad: \
+            4e:31:1a:ed:98:b9:a1:fe:7f:2b:c0:6f:85:d6:65: \
+            08:9b:da:0d:b5:cd:02:07:23:21:c0:54:98:0d:19: \
+            82:7f:3d:f1:cd:e1:9c:71:1d:fb:28:c3:72:bf:8d: \
+            06:97:08:39:8e:7f:7b:bd:7a:04:40:b4:98:1b:9b: \
+            42:45:a8:29:b5:05:d9:ee:fa:18:50:73:de:bd:dd: \
+            56:18:0d:d6:01:f5:ad:fd:7a:8d:b6:36:f5:e2:69: \
+            3a:03:b7:10:30:ca:35:ba:f8:b3:f4:62:7d:4e:fe:\
+            86:59:28:a6:9e:a0:76:62:ff:70:af:52:31:76:ef:\
+            bd:cb:4d:96:6a:d6:49:d0:e6:95:11:3a:d5:55:13:\
+            39:3b:2e:18:48:a3:2e:72:47:c8:a2:25:88:c4:13:\
+            c4:14:06:67:07:c2:d9:f4:f6:90:99:36:c2:32:0d:\
+            b5:91:c3:51:b0:99:6a:ad:2f:01:e6:ef:ec:89:f9:\
+            02:14:ae:dc:f4:77:81:9a:e1:10:29:e3:db:76:2f:\
+            03:6c:57:31:c8:f2:e8:7f:74:b8:82:18:bb:f5:ed:\
+            4b:b9:bc:43:b1:63:48:a9:35:79:ca:73:72:be:ca:\
+            48:4d:de:bb:9b:d8:3f:fd:01:c3:f5:1d:55:0e:dc:\
+            97:5b"
+	    
+	    print('string prime:', prime)
+	    
 	    pass
 		
 
