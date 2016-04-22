@@ -66,8 +66,4 @@ class DiffieHellman:
 
 # Testing stuff
 if __name__ == '__main__':
-    dh_instance = DiffieHellman(17, 14, 3, 8)
-    print(dh_instance)
-    print(dh_instance.get_private_key())
-    print(dh_instance.pub_numbers)
-    print(dh_instance.priv_numbers)
+    pass

@@ -1,3 +1,8 @@
+"""
+The Following implementation of Miller-Rabin algorithm was taken from
+https://gist.github.com/Ayrx/5884790
+"""
+
 import random
 
 def miller_rabin(n, k):
