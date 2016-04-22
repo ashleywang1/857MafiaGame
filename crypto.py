@@ -7,6 +7,7 @@ from base64 import encodebytes, decodebytes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric.dh import *
 from cryptography.hazmat.backends import default_backend
+from cryptography.fernet import Fernet
 
 
 
@@ -63,6 +64,28 @@ class DiffieHellman:
 
     def get_private_key(self):
         return self.private_key
+
+
+class SymmetricCrypto:
+    """
+    Encryption and decryption using Fernet scheme
+    """
+
+    def __init__(self, key):
+        self.fernet = Fernet(key)
+
+    def encrypt(self, plaintext):
+        """
+        Encrypts a plaintext message and returns a token
+        """
+        return self.fernet.encrypt(plaintext.encode('UTF-8'))
+
+    def decrypt(self, token):
+        """
+        Decrypts a given token into a plaintext message
+        """
+        return self.fernet.decrypt(token)
+
 
 # Testing stuff
 if __name__ == '__main__':
