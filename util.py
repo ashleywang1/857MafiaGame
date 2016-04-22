@@ -4,7 +4,7 @@ Utility function + classes file
 
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
-import json
+import json, requests
 from time import sleep
 
 from tornado.httpclient import AsyncHTTPClient
@@ -55,6 +55,21 @@ def send_to_player(player, endpoint, data=None, callback=None,
     method = 'GET' if GET else 'POST'
     return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
                                    connect_timeout=connect_timeout, request_timeout=request_timeout)
+
+def query_endpoint(ME, PLAYERS, endpoint, check= lambda x: x != None):
+    """Scans all the messages and the endpoints from all the other players, returns a list of those messages"""
+    results = []
+    print("Querying endpoint {}".format(endpoint))
+    for i, player in enumerate(PLAYERS):
+        if i == ME: continue
+        hostname = SERVER_URL + ":" + str(player) + endpoint
+        try:
+            r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
+            v = json.loads(r.text, object_hook=as_enum)
+            results.append(v)
+        except Exception:
+            print("\nPlayer {} has no response!\n".format(i))
+    return results
 
 def check_response_error(player, request_name='Request', raise_error=True):
     """
