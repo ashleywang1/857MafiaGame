@@ -81,7 +81,7 @@ class DiffieHellman:
             # print(prime_int)
             q_int = 2*p_int + 1
             # print("extra derpy fail")
-        print("Successful safe prime has been genearated")
+        print("Successful safe prime has been generated")
         return q_int
 
 
