@@ -66,8 +66,8 @@ class MainHandler(tornado.web.RequestHandler):
             print("Player {} has joined the game!".format(ME))
 
             # Start up asynchronous heartbeats
-            #HEARTBEAT_RUNNER = BackgroundTaskRunner(HeartbeatHandler.send_heartbeats, HEARTBEAT_INTERVAL)
-            #HEARTBEAT_RUNNER.start()
+            HEARTBEAT_RUNNER = BackgroundTaskRunner(HeartbeatHandler.send_heartbeats, HEARTBEAT_INTERVAL)
+            HEARTBEAT_RUNNER.start()
 
             # Start the setup process if first player
             if ME == 0: start_setup(self)
@@ -118,11 +118,12 @@ def start_setup(self):
     send_to_next_player('setup', data=data, GET=False)
 
 class SetupHandler(tornado.web.RequestHandler):
-    # Player A: Encrypts list of (mafia,x), (mafia,x), (doctor,0)...Sends list to B
-    # Player B: Encrypts A's encrypted cardList with secret y ......Sends Enc(cardList, y) to C
-    # Player C -> N -> A: chooses one, removes it, sends to next player
-    # Player A: reveal A's secret key
-    # Player B: reveal B's secret key
+    # TODO - special case with player A
+    # Player A: Encrypts entire list of roles
+    # Player A - N: Choose 1 card, encrypt it, send the resulting list to next player
+    # Player A: Decrypt entire list of roles, keep the one in plaintext
+    # Player B - N: Try to decrypt all the roles, keep the one in plaintext
+    #               , send the unmodified list to next player
 
     def first_stage(self, cards):
         """
@@ -252,40 +253,48 @@ def start_day_round():
     }
     send_to_next_player('day', data, GET=False)
 
+
+def get_lynch_votes():
+    """
+    Callback that lynches based on the results of the response
+    """
+    voteList = []
+    def lynch(r, voteList=voteList):
+        global ME
+        global ROUND
+        v = load_request_body(r.body)
+        voteList.append(v)
+
+        if len(voteList) == len(PLAYERS) - 1:
+            # We have all the votes
+            voteList = [int(x) for x in voteList]
+            voteList.append(int(DayHandler.vote))
+            print("Vote List is {} with length {}".format(voteList, len(voteList)))
+            deadPlayer = max(set(voteList), key=voteList.count)
+            print("This player - {} is now dead".format(PLAYERS[deadPlayer]))
+            print(deadPlayer)
+
+            if deadPlayer == ME: # you are dead!
+                stage = Stage.DEAD
+            LYNCHED.append(PLAYERS[deadPlayer])
+            PLAYERS.pop(deadPlayer)
+            if deadPlayer <= ME:
+                ME -= 1
+            ROUND += 1
+
+    return lynch
+
 class DayHandler(tornado.web.RequestHandler):
 
     vote = None
 
-    def lynch(self):
-        global ME
-        global ROUND
-        # Get the votes from all the players
-        voteList = query_endpoint(ME, PLAYERS, "/day", check=lambda x: x['round'] == ROUND)
-        voteList = [int(x) for x in voteList]
-        voteList.append(int(self.vote))
-
-        deadPlayer = max(set(voteList), key=voteList.count)
-        print("This player - {} is now dead".format(PLAYERS[deadPlayer]))
-        print(deadPlayer)
-
-        if deadPlayer == ME: # you are dead!
-            stage = Stage.DEAD
-        LYNCHED.append(PLAYERS[deadPlayer])
-        PLAYERS.pop(deadPlayer)
-        if deadPlayer <= ME:
-            ME -= 1
-        ROUND += 1
-        return True
-
     def cast_vote(self):
         vote = input("Which player would you like to lynch?")
-        print(LYNCHED+KILLED)
         while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS):
             print("Sorry! That input is invalid!")
             vote = input("Which player would you like to lynch?")
         while PLAYERS[int(vote)] in LYNCHED + KILLED:
-            print("These players are already dead")
-            print(LYNCHED+KILLED)
+            print("These players {} are already dead".format(LYNCHED+KILLED))
             vote = input("Which player would you like to lynch?")
         DayHandler.vote = vote
 
@@ -319,7 +328,9 @@ class DayHandler(tornado.web.RequestHandler):
                 'stage': json.dumps(Stage.DAY, cls=EnumEncoder),
                 'step': step
             }
-            self.lynch()
+            #self.lynch()
+            callback = get_lynch_votes()
+            query_endpoint(ME, PLAYERS, "day", callback = callback, check=lambda x: x['round'] == ROUND)
             send_to_next_player('day', data=data, GET=False)
 
         elif step == 2: # start next step
@@ -365,7 +376,7 @@ class NightHandler(tornado.web.RequestHandler):
         print("These players are already dead: ")
         print(LYNCHED + KILLED)
         # Get the votes from all the players
-        voteList = query_endpoint(ME, PLAYERS, "/night")
+        voteList = query_endpoint(ME, PLAYERS, "night")
         voteList.append(int(self.vote))
 
         deadPlayer = max(set(voteList), key=voteList.count)

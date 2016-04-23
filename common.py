@@ -13,7 +13,7 @@ SERVER_URL = 'http://{}'.format(SERVER_IP)
 CONNECT_TIMEOUT = 1 # Seconds
 REQUEST_TIMEOUT = 1 # Seconds
 
-HEARTBEAT_INTERVAL = 60 # Seconds
+HEARTBEAT_INTERVAL = 1 # Seconds
 
 ENCODING = 'UTF-8'
 HEADERS = {

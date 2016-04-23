@@ -32,14 +32,14 @@ def as_enum(d):
 """
 Request handling
 """
-ASYNC_HTTP_CLIENT = AsyncHTTPClient()
-
 def load_request_body(body):
     """Unserializes the body of a JSON response that is in bytes."""
     return json.loads(body.decode(ENCODING), object_hook=as_enum)
 
+ASYNC_HTTP_CLIENT = AsyncHTTPClient()
+
 def send_to_player(player, endpoint, data=None, callback=None,
-                   connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
+                   connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True, async=True):
     """Sends a request to the specified player at the specified endpoint"""
 
     url = '{server_url}:{player}/{endpoint}'.format(
@@ -52,21 +52,25 @@ def send_to_player(player, endpoint, data=None, callback=None,
     if not callback: callback = check_response_error(player)
     if not GET and data is not None: data = json.dumps(data, cls=EnumEncoder)
 
-    method = 'GET' if GET else 'POST'
-    return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
-                                   connect_timeout=connect_timeout, request_timeout=request_timeout)
+    if async:
+        method = 'GET' if GET else 'POST'
+        return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
+                                       connect_timeout=connect_timeout, request_timeout=request_timeout)
+    else:
+        if GET:
+            r = requests.get(url, timeout=REQUEST_TIMEOUT)
+        else:
+            requests.post(url,data)
 
-def query_endpoint(ME, PLAYERS, endpoint, check= lambda x: x != None):
+
+def query_endpoint(ME, PLAYERS, endpoint, callback=None, check= lambda x: x != None):
     """Scans all the messages and the endpoints from all the other players, returns a list of those messages"""
     results = []
     print("Querying endpoint {}".format(endpoint))
     for i, player in enumerate(PLAYERS):
         if i == ME: continue
-        hostname = SERVER_URL + ":" + str(player) + endpoint
         try:
-            r = requests.get(hostname, timeout=REQUEST_TIMEOUT)
-            v = json.loads(r.text, object_hook=as_enum)
-            results.append(v)
+            r = send_to_player(player, endpoint, callback=callback , GET=True)
         except Exception:
             print("\nPlayer {} has no response!\n".format(i))
     return results
