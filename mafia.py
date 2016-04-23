@@ -68,10 +68,10 @@ class MainHandler(tornado.web.RequestHandler):
             HEARTBEAT_RUNNER.start()
 
             # Start the setup process if first player
-            if ME == 0: start_setup(self)
+            if ME == 0: start_setup()
 
 
-def start_setup(self):
+def start_setup():
     x = 0 # TODO: secret key
     cards = [{'card': (Role.MAFIA, x), 'taken': False}] * ROLE_DISTRIBUTION[Role.MAFIA]
     cards.extend([{'card': (Role.TOWNSPERSON, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
@@ -213,25 +213,30 @@ class SetupHandler(tornado.web.RequestHandler):
             CRYPTO_INSTANCE = None
             STATE = Stage.DAY
 
-            # TODO: Continue on to next step
+            # Continue on to next step
             start_day_round()
 
         else: raise Exception('Invalid step reached during setup process!')
 
 def start_day_round():
-    vote = input("Which player would you like to lynch?")
-    while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS) or PLAYERS[int(vote)] in LYNCHED + KILLED:
-        print("Sorry! That input is invalid!")
-        vote = input("Which player would you like to lynch?")
-    DayHandler.vote = vote
+    # Tell everyone to start voting
     data = {
         'stage': json.dumps(Stage.DAY, cls=EnumEncoder),
         'step': 0
     }
-    send_to_next_player('day', data, GET=False)
+    send_to_all_players('day', data, GET=False)
 
+def cast_vote():
+    vote = input("Which player would you like to lynch? ")
+    while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS):
+        print("Sorry! That input is invalid!")
+        vote = input("Which player would you like to lynch? ")
+    while PLAYERS[int(vote)] in LYNCHED + KILLED:
+        print("These players {} are already dead".format(LYNCHED+KILLED))
+        vote = input("Which player would you like to lynch? ")
+    DayHandler.vote = vote
 
-def get_lynch_votes():
+def get_lynch_votes(query_runner):
     """
     Callback that lynches based on the results of the response
     """
@@ -239,8 +244,11 @@ def get_lynch_votes():
     def lynch(r, voteList=voteList):
         global ME
         global ROUND
+        print("The lynch result is {} ".format(r.body))
         v = load_request_body(r.body)
-        voteList.append(v)
+        if v['vote'] is not None:
+            query_runner.stop()
+        voteList.append(v['vote'])
 
         if len(voteList) == len(PLAYERS) - 1:
             # We have all the votes
@@ -258,6 +266,8 @@ def get_lynch_votes():
             if deadPlayer <= ME:
                 ME -= 1
             ROUND += 1
+            if (ME == 0):
+                start_night_round()
 
     return lynch
 
@@ -265,55 +275,38 @@ class DayHandler(tornado.web.RequestHandler):
 
     vote = None
 
-    def cast_vote(self):
-        vote = input("Which player would you like to lynch?")
-        while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS):
-            print("Sorry! That input is invalid!")
-            vote = input("Which player would you like to lynch?")
-        while PLAYERS[int(vote)] in LYNCHED + KILLED:
-            print("These players {} are already dead".format(LYNCHED+KILLED))
-            vote = input("Which player would you like to lynch?")
-        DayHandler.vote = vote
-
     def get(self):
-        self.write(json.dumps(self.vote, cls=EnumEncoder)) #{'vote':self.vote, 'round':ROUND}
+        self.write(json.dumps({'vote':self.vote, 'round':ROUND, 'player': ME}, cls=EnumEncoder))
 
     def post(self):
-        print("Upon request, I am player {}.".format(ME))
-        first_player = (ME == 0)
         data = load_request_body(self.request.body)
         stage = json.loads(data['stage'], object_hook=as_enum)
         step = int(data['step'])
 
         assert stage == Stage.DAY, "Players do not agree on current stage!"
 
-        if first_player: step += 1 # We have gone back to the first player
-        print("I am now on step {}".format(step))
-
-        if step == 0: # In the first step, players cast their votes
-            print('Step 0, I am voting')
-            self.cast_vote()
+        if step == 0:
+            
+            cast_vote()
+            time.sleep(DAY_VOTING_PERIOD)
             data = {
                 'stage': json.dumps(Stage.DAY, cls=EnumEncoder),
-                'step': step
+                'step': 1
             }
-            send_to_next_player('day', data=data, GET=False)
+            send_to_next_player('day', data, GET=False)
 
-        elif step == 1: # In this step, everyone figures out who died
-            print('Step 1, I am lynching')
-            data = {
-                'stage': json.dumps(Stage.DAY, cls=EnumEncoder),
-                'step': step
-            }
-            #self.lynch()
-            callback = get_lynch_votes()
-            query_endpoint(ME, PLAYERS, "day", callback = callback, check=lambda x: x['round'] == ROUND)
-            send_to_next_player('day', data=data, GET=False)
+        elif step == 1:
+            query_runner = BackgroundTaskRunner(None, QUERY_INTERVAL)
+            callback = get_lynch_votes(query_runner)
+            def query():
+                query_endpoint(ME, PLAYERS, "day", callback = callback, check=lambda x: x['round'] == ROUND)
 
-        elif step == 2: # start next step
-            print("Day round has ended!")
-            start_night_round()
+            query_runner.set_task(query)
+            
+            query_runner.start()
         else:
+            print(step)
+            print("WHY IS THE STEP WRONG")
             raise Exception("Invalid step!")
 
 def start_night_round():
@@ -323,17 +316,18 @@ def start_night_round():
     #     print("Sorry! That input is invalid!")
     #     vote = input("Which player would you like to kill?")
     # NightHandler.vote = vote
+    return
     if ROLE == Role.MAFIA:
         print(ROLE)
         print(LYNCHED+KILLED)
-        vote = input("Which player would you like to kill?")
+        vote = input("Which player would you like to kill? ")
         while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS):
             print("Sorry! That input is invalid!")
-            vote = input("Which player would you like to kill?")
+            vote = input("Which player would you like to kill? ")
         while PLAYERS[int(vote)] in LYNCHED + KILLED:
             print("These players are already dead")
             print(LYNCHED+KILLED)
-            vote = input("Which player would you like to kill?")
+            vote = input("Which player would you like to kill? ")
         NightHandler.vote = vote
     else:
         NightHandler.vote = RANDOM.randint(0, len(PLAYERS))
@@ -369,14 +363,14 @@ class NightHandler(tornado.web.RequestHandler):
         if ROLE == Role.MAFIA:
             print(ROLE)
             print(LYNCHED+KILLED)
-            vote = input("Which player would you like to kill?")
+            vote = input("Which player would you like to kill? ")
             while not vote.isdigit() or int(vote) < 0 or int(vote) >= len(PLAYERS):
                 print("Sorry! That input is invalid!")
-                vote = input("Which player would you like to kill?")
+                vote = input("Which player would you like to kill? ")
             while PLAYERS[int(vote)] in LYNCHED + KILLED:
                 print("These players are already dead")
                 print(LYNCHED+KILLED)
-                vote = input("Which player would you like to kill?")
+                vote = input("Which player would you like to kill? ")
             NightHandler.vote = vote
         else:
             NightHandler.vote = RANDOM.randint(0, len(PLAYERS))

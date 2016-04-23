@@ -39,7 +39,7 @@ def load_request_body(body):
 ASYNC_HTTP_CLIENT = AsyncHTTPClient()
 
 def send_to_player(player, endpoint, data=None, callback=None,
-                   connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True, async=True):
+                   connect_timeout=CONNECT_TIMEOUT, request_timeout=REQUEST_TIMEOUT, GET=True):
     """Sends a request to the specified player at the specified endpoint"""
 
     url = '{server_url}:{player}/{endpoint}'.format(
@@ -52,15 +52,9 @@ def send_to_player(player, endpoint, data=None, callback=None,
     if not callback: callback = check_response_error(player)
     if not GET and data is not None: data = json.dumps(data, cls=EnumEncoder)
 
-    if async:
-        method = 'GET' if GET else 'POST'
-        return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
-                                       connect_timeout=connect_timeout, request_timeout=request_timeout)
-    else:
-        if GET:
-            r = requests.get(url, timeout=REQUEST_TIMEOUT)
-        else:
-            requests.post(url,data)
+    method = 'GET' if GET else 'POST'
+    return ASYNC_HTTP_CLIENT.fetch(url, body=data, method=method, callback=callback,
+                                   connect_timeout=connect_timeout, request_timeout=request_timeout)
 
 
 def query_endpoint(ME, PLAYERS, endpoint, callback=None, check= lambda x: x != None):
@@ -69,10 +63,7 @@ def query_endpoint(ME, PLAYERS, endpoint, callback=None, check= lambda x: x != N
     print("Querying endpoint {}".format(endpoint))
     for i, player in enumerate(PLAYERS):
         if i == ME: continue
-        try:
-            r = send_to_player(player, endpoint, callback=callback , GET=True)
-        except Exception:
-            print("\nPlayer {} has no response!\n".format(i))
+        r = send_to_player(player, endpoint, callback=callback , GET=True)
     return results
 
 def check_response_error(player, request_name='Request', raise_error=True):
@@ -127,6 +118,9 @@ class BackgroundTaskRunner():
         if self.running:
             self.executor.shutdown(wait=wait)
             self.running = False
+
+    def set_task(self, task):
+        self.task = task
 
     def handle_errors(self, future):
         exception = future.exception()
