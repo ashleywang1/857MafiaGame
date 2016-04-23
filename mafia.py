@@ -88,8 +88,6 @@ def generate_prime():
 
         q_int = 2*p_int+1
 
-
-
     print("Successful safe prime has been genearated")
     return q_int
 
@@ -277,8 +275,16 @@ def get_lynch_votes(query_runner):
             # We have all the votes
             voteList = [int(x) for x in voteList]
             voteList.append(int(DayHandler.vote))
-            print("Vote List is {} with length {}".format(voteList, len(voteList)))
+            print("Vote List is {}".format(voteList))
             deadPlayer = max(set(voteList), key=voteList.count)
+            tally = [voteList.count(x) for x in set(voteList)]
+            tally.sort()
+            if tally.count(tally[-1]) != 1: # there is a tie
+                print("We have tied! Start again.")
+                print("Vote List is {}".format(voteList))
+                if (ME == 0):
+                    start_day_round()
+                return
             print("This player - {} is now dead".format(PLAYERS[deadPlayer]))
             print(deadPlayer)
 
