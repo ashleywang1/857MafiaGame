@@ -9,6 +9,10 @@ from cryptography.hazmat.primitives.asymmetric.dh import *
 from cryptography.hazmat.backends import default_backend
 from cryptography.fernet import Fernet
 
+#TODO: For testing purposed
+import miller_rabin as mr
+import subprocess
+
 
 
 ENCODING = 'UTF-8'
@@ -86,7 +90,26 @@ class SymmetricCrypto:
         """
         return self.fernet.decrypt(token)
 
+def generate_prime():
+
+    output = subprocess.check_output(('openssl', 'prime', '-generate', '-bits', '2048','-hex'));
+    p = output.decode("UTF-8")
+    p_int = int(p, 16)
+    q_int = 2*p_int+1
+
+    while not(mr.miller_rabin(p_int, 40)) and not(mr.miller_rabin(q_int, 40)):
+        output = subprocess.check_output(('openssl', 'prime', '-generate', '-bits', '2048','-hex'));
+        p_int = int(output.decode("UTF-8"), 16)
+
+        q_int = 2*p_int+1
+
+
+
+    print("Successful safe prime has been genearated")
+    return q_int
+
 
 # Testing stuff
 if __name__ == '__main__':
-    pass
+    prime = generate_prime()
+    # pass

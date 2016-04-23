@@ -7,6 +7,7 @@ import json
 from random import SystemRandom
 import sys
 import time
+import subprocess
 
 # External dependencies
 import tornado.ioloop
@@ -14,6 +15,7 @@ from tornado.options import parse_command_line
 import tornado.web
 
 # Local file imports
+import miller_rabin as mr
 from common import *
 from crypto import CommutativeCipher
 from util import (
@@ -71,8 +73,29 @@ class MainHandler(tornado.web.RequestHandler):
             if ME == 0: start_setup(self)
 
 
+def generate_prime():
+    """
+    Method that generates a safe prime to use for DH key exchange
+    """
+    output = subprocess.check_output(('openssl', 'prime', '-generate', '-bits', '2048','-hex'));
+    p = output.decode("UTF-8")
+    p_int = int(p, 16)
+    q_int = 2*p_int+1
+
+    while not(mr.miller_rabin(p_int, 40)) and not(mr.miller_rabin(q_int, 40)):
+        output = subprocess.check_output(('openssl', 'prime', '-generate', '-bits', '2048','-hex'));
+        p_int = int(output.decode("UTF-8"), 16)
+
+        q_int = 2*p_int+1
+
+
+
+    print("Successful safe prime has been genearated")
+    return q_int
+
+
 def start_setup(self):
-    x = 0 # TODO: secret key
+    x = generate_prime()
     cards = [{'card': (Role.MAFIA, x), 'taken': False}] * ROLE_DISTRIBUTION[Role.MAFIA]
     cards.extend([{'card': (Role.TOWNSPERSON, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
     cards.extend([{'card': (Role.DETECTIVE, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.DETECTIVE])
