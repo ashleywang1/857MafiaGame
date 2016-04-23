@@ -69,6 +69,21 @@ class DiffieHellman:
     def get_private_key(self):
         return self.private_key
 
+    def generate_prime():
+
+        prime = os.urandom(256)
+        p_hex = hexlify(prime).decode("UTF-8")
+        p_int = int(p_hex, 16)
+        q_int = 2*p_int + 1
+
+        while not(mr.miller_rabin(p_int, 40)) and not(mr.miller_rabin(q_int, 40)):
+            p_int = int(hexlify(os.urandom(256)).decode("UTF-8"), 16)
+            # print(prime_int)
+            q_int = 2*p_int + 1
+            # print("extra derpy fail")
+        print("Successful safe prime has been genearated")
+        return q_int
+
 
 class SymmetricCrypto:
     """
@@ -90,46 +105,10 @@ class SymmetricCrypto:
         """
         return self.fernet.decrypt(token)
 
-def generate_prime():
 
-    prime = os.urandom(256)
-    print(type(prime))
-    prime_hex = hexlify(prime).decode("UTF-8")
-    print(prime_hex)
-
-    prime_int = int(prime_hex, 16)
-    print(prime_int)
-
-    qrime_int = 2*prime_int + 1
-
-    while not(mr.miller_rabin(prime_int, 40)) and not(mr.miller_rabin(qrime_int, 40)):
-        prime_int = int(hexlify(os.urandom(256)).decode("UTF-8"), 16)
-        print(prime_int)
-        qrime_int = 2*prime_int + 1
-        print("extra derpy fail")
-
-    print("extra derpy success?")
-
-
-
-    # output = subprocess.check_output(('openssl', 'prime', '-generate', '-bits', '2048','-hex'));
-    # p = output.decode("UTF-8")
-    # p_int = int(p, 16)
-    # q_int = 2*p_int+1
-
-    # while not(mr.miller_rabin(p_int, 40)) and not(mr.miller_rabin(q_int, 40)):
-    #     output = subprocess.check_output(('openssl', 'prime', '-generate', '-bits', '2048','-hex'));
-    #     p_int = int(output.decode("UTF-8"), 16)
-
-    #     q_int = 2*p_int+1
-
-
-
-    print("Successful safe prime has been genearated")
-    return qrime_int
 
 
 # Testing stuff
 if __name__ == '__main__':
-    prime = generate_prime()
+    prime = DiffieHellman.generate_prime()
     # pass
