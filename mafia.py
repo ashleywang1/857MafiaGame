@@ -74,7 +74,7 @@ class MainHandler(tornado.web.RequestHandler):
 
 
 def start_setup():
-    x = DiffieHellman.generate_prime()
+    x = 0 # DiffieHellman.generate_prime()
     cards = [{'card': (Role.MAFIA, x), 'taken': False}] * ROLE_DISTRIBUTION[Role.MAFIA]
     cards.extend([{'card': (Role.TOWNSPERSON, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.TOWNSPERSON])
     cards.extend([{'card': (Role.DETECTIVE, None), 'taken': False}] * ROLE_DISTRIBUTION[Role.DETECTIVE])
@@ -246,10 +246,17 @@ def get_lynch_votes(query_runner):
     def lynch(r, voteList=voteList):
         global ME
         global ROUND
+        check_response_error(ME)(r)
         print("The lynch result is {} ".format(r.body))
+        if r.body is None:
+            return
+
         v = load_request_body(r.body)
-        if v['vote'] is not None:
-            query_runner.stop()
+
+        if v['vote'] is None:
+            return
+
+        query_runner.stop()
         voteList.append(v['vote'])
 
         if len(voteList) == len(PLAYERS) - 1:
