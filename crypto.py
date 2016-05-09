@@ -8,11 +8,8 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric.dh import *
 from cryptography.hazmat.backends import default_backend
 from cryptography.fernet import Fernet
-
-#TODO: For testing purposed
-import miller_rabin as mr
-import subprocess
 from binascii import hexlify
+import miller_rabin as mr
 
 
 ENCODING = 'UTF-8'
@@ -72,12 +69,12 @@ class DiffieHellman:
     def generate_prime():
 
         prime = os.urandom(256)
-        p_hex = hexlify(prime).decode("UTF-8")
+        p_hex = hexlify(prime).decode(ENCODING)
         p_int = int(p_hex, 16)
         q_int = 2*p_int + 1
 
         while not(mr.miller_rabin(p_int, 40)) and not(mr.miller_rabin(q_int, 40)):
-            p_int = int(hexlify(os.urandom(256)).decode("UTF-8"), 16)
+            p_int = int(hexlify(os.urandom(256)).decode(ENCODING), 16)
             # print(prime_int)
             q_int = 2*p_int + 1
             # print("extra derpy fail")
@@ -97,7 +94,7 @@ class SymmetricCrypto:
         """
         Encrypts a plaintext message and returns a token
         """
-        return self.fernet.encrypt(plaintext.encode('UTF-8'))
+        return self.fernet.encrypt(plaintext.encode(ENCODING))
 
     def decrypt(self, token):
         """

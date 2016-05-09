@@ -137,3 +137,18 @@ class BackgroundTaskRunner():
         # Raised upon attempt to submit after shutdown of executor
         except RuntimeError:
             return
+
+"""
+Run a function with a timeout
+"""
+def func_with_timeout(func, timeout=5, wait_time=None, *args, **kwargs):
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future = executor.submit(func, args, kwargs)
+
+        # Force the result to wait for a fixed time period
+        if wait_time:
+            timeout = 0
+            wait_future = executor.submit(sleep, wait_time)
+            wait_future.result()
+
+        return future.result(timeout=timeout)
